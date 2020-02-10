@@ -510,7 +510,7 @@ func (sma StorageMinerActor) SubmitFallbackPoSt(act *types.Actor, vmctx types.VM
 		return nil, aerrors.Absorb(err, 3, "could not decode sectorset")
 	}
 
-	proverID := vmctx.Message().To // TODO: normalize to ID address
+	// proverID := vmctx.Message().To // TODO: normalize to ID address
 
 	var candidates []sectorbuilder.EPostCandidate
 	for _, t := range params.Candidates {
@@ -523,16 +523,18 @@ func (sma StorageMinerActor) SubmitFallbackPoSt(act *types.Actor, vmctx types.VM
 		})
 	}
 
-	if ok, lerr := vmctx.Sys().VerifyFallbackPost(vmctx.Context(), mi.SectorSize,
-		sectorbuilder.NewSortedPublicSectorInfo(sectorInfos), seed[:], params.Proof, candidates, proverID, activeFaults); !ok || lerr != nil {
-		if lerr != nil {
-			// TODO: study PoST errors
-			return nil, aerrors.Absorb(lerr, 4, "PoST error")
+	/*
+		if ok, lerr := vmctx.Sys().VerifyFallbackPost(vmctx.Context(), mi.SectorSize,
+			sectorbuilder.NewSortedPublicSectorInfo(sectorInfos), seed[:], params.Proof, candidates, proverID, activeFaults); !ok || lerr != nil {
+			if lerr != nil {
+				// TODO: study PoST errors
+				return nil, aerrors.Absorb(lerr, 4, "PoST error")
+			}
+			if !ok {
+				return nil, aerrors.New(4, "PoST invalid")
+			}
 		}
-		if !ok {
-			return nil, aerrors.New(4, "PoST invalid")
-		}
-	}
+	*/
 
 	// Post submission is successful!
 	if err := onSuccessfulPoSt(self, vmctx, activeFaults); err != nil {

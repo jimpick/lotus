@@ -1,4 +1,4 @@
-package jsonrpc-wasm
+package jsonrpc
 
 import (
 	"container/list"
