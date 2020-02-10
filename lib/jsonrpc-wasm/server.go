@@ -50,7 +50,7 @@ func (s *RPCServer) handleWS(ctx context.Context, w http.ResponseWriter, r *http
 	}
 
 	(&wsConn{
-		conn:    c,
+		// conn:    c,
 		handler: s.methods,
 		exiting: make(chan struct{}),
 	}).handleWsConn(ctx)

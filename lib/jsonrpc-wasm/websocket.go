@@ -3,14 +3,16 @@ package jsonrpc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall/js"
 
+	// "github.com/gorilla/websocket"
 	"github.com/gorilla/websocket"
 	"golang.org/x/xerrors"
 )
@@ -43,7 +45,7 @@ type outChanReg struct {
 
 type wsConn struct {
 	// outside params
-	conn     *websocket.Conn
+	// conn     *websocket.Conn
 	handler  handlers
 	requests <-chan clientRequest
 	stop     <-chan struct{}
@@ -80,24 +82,32 @@ type wsConn struct {
 	registerCh chan outChanReg
 }
 
+var incoming *chan io.Reader
+
 //                         //
 // WebSocket Message utils //
 //                         //
 
 // nextMessage wait for one message and puts it to the incoming channel
 func (c *wsConn) nextMessage() {
-	msgType, r, err := c.conn.NextReader()
-	if err != nil {
-		c.incomingErr = err
-		close(c.incoming)
-		return
-	}
-	if msgType != websocket.BinaryMessage && msgType != websocket.TextMessage {
-		c.incomingErr = errors.New("unsupported message type")
-		close(c.incoming)
-		return
-	}
-	c.incoming <- r
+	fmt.Println("Jim FIXME nextMessage")
+
+	/*
+		msgType, r, err := c.conn.NextReader()
+		if err != nil {
+			c.incomingErr = err
+			close(c.incoming)
+			return
+		}
+	*/
+	/*
+		if msgType != websocket.BinaryMessage && msgType != websocket.TextMessage {
+			c.incomingErr = errors.New("unsupported message type")
+			close(c.incoming)
+			return
+		}
+	*/
+	// c.incoming <- r
 }
 
 // nextWriter waits for writeLk and invokes the cb callback with WS message
@@ -106,18 +116,23 @@ func (c *wsConn) nextWriter(cb func(io.Writer)) {
 	c.writeLk.Lock()
 	defer c.writeLk.Unlock()
 
-	wcl, err := c.conn.NextWriter(websocket.TextMessage)
-	if err != nil {
-		log.Error("handle me:", err)
-		return
-	}
+	fmt.Println("Jim FIXME nextWriter")
+	/*
+		wcl, err := c.conn.NextWriter(websocket.TextMessage)
+		if err != nil {
+			log.Error("handle me:", err)
+			return
+		}
+	*/
 
-	cb(wcl)
+	/*
+		cb(wcl)
 
-	if err := wcl.Close(); err != nil {
-		log.Error("handle me:", err)
-		return
-	}
+		if err := wcl.Close(); err != nil {
+			log.Error("handle me:", err)
+			return
+		}
+	*/
 }
 
 func (c *wsConn) sendRequest(req request) {
@@ -126,12 +141,15 @@ func (c *wsConn) sendRequest(req request) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("ws send", string(j))
-	if err := c.conn.WriteJSON(req); err != nil {
-		log.Error("handle me:", err)
-		c.writeLk.Unlock()
-		return
-	}
+	// fmt.Println("ws send", string(j))
+	js.Global().Get("ws").Call("send", string(j))
+	/*
+		if err := c.conn.WriteJSON(req); err != nil {
+			log.Error("handle me:", err)
+			c.writeLk.Unlock()
+			return
+		}
+	*/
 	c.writeLk.Unlock()
 }
 
@@ -427,6 +445,14 @@ func (c *wsConn) handleFrame(ctx context.Context, frame frame) {
 	}
 }
 
+func handleIncomingFromJs(this js.Value, inputs []js.Value) interface{} {
+	fmt.Println("incoming", inputs[0])
+	go func() {
+		*incoming <- strings.NewReader(inputs[0].String())
+	}()
+	return nil
+}
+
 func (c *wsConn) handleWsConn(ctx context.Context) {
 	c.incoming = make(chan io.Reader)
 	c.inflight = map[int64]clientRequest{}
@@ -459,7 +485,12 @@ func (c *wsConn) handleWsConn(ctx context.Context) {
 	}()
 
 	// wait for the first message
-	go c.nextMessage()
+	// go c.nextMessage()
+
+	fmt.Println("Jim handleWsConn 1")
+
+	incoming = &c.incoming
+	js.Global().Get("ws").Set("handler", js.FuncOf(handleIncomingFromJs))
 
 	for {
 		select {
@@ -483,7 +514,7 @@ func (c *wsConn) handleWsConn(ctx context.Context) {
 			}
 
 			c.handleFrame(ctx, frame)
-			go c.nextMessage()
+			// go c.nextMessage()
 		case req := <-c.requests:
 			if req.req.ID != nil {
 				c.inflight[*req.req.ID] = req
@@ -491,15 +522,20 @@ func (c *wsConn) handleWsConn(ctx context.Context) {
 			c.sendRequest(req.req)
 		case <-c.stop:
 			c.writeLk.Lock()
-			cmsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
-			if err := c.conn.WriteMessage(websocket.CloseMessage, cmsg); err != nil {
-				log.Warn("failed to write close message: ", err)
-			}
-			if err := c.conn.Close(); err != nil {
-				log.Warnw("websocket close error", "error", err)
-			}
+			fmt.Println("Jim FIXME handleWsConn stop")
+			/*
+				cmsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
+				if err := c.conn.WriteMessage(websocket.CloseMessage, cmsg); err != nil {
+					log.Warn("failed to write close message: ", err)
+				}
+				if err := c.conn.Close(); err != nil {
+					log.Warnw("websocket close error", "error", err)
+				}
+			*/
 			c.writeLk.Unlock()
 			return
 		}
 	}
+	fmt.Println("Jim handleWsConn 3")
+
 }

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/gorilla/websocket"
+	// "github.com/gorilla/websocket"
 	logging "github.com/ipfs/go-log/v2"
 	"go.opencensus.io/trace"
 	"go.opencensus.io/trace/propagation"
@@ -79,10 +79,13 @@ type client struct {
 // NewMergeClient is like NewClient, but allows to specify multiple structs
 // to be filled in the same namespace, using one connection
 func NewMergeClient(addr string, namespace string, outs []interface{}, requestHeader http.Header) (ClientCloser, error) {
-	conn, _, err := websocket.DefaultDialer.Dial(addr, requestHeader)
-	if err != nil {
-		return nil, err
-	}
+	fmt.Println("Jim removed websocket dialer", addr)
+	/*
+		conn, _, err := websocket.DefaultDialer.Dial(addr, requestHeader)
+		if err != nil {
+			return nil, err
+		}
+	*/
 
 	c := client{
 		namespace: namespace,
@@ -95,7 +98,7 @@ func NewMergeClient(addr string, namespace string, outs []interface{}, requestHe
 
 	handlers := map[string]rpcHandler{}
 	go (&wsConn{
-		conn:     conn,
+		// conn:     conn,
 		handler:  handlers,
 		requests: c.requests,
 		stop:     stop,
