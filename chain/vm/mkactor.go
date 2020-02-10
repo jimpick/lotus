@@ -7,12 +7,6 @@ import (
 	dstore "github.com/ipfs/go-datastore"
 	hamt "github.com/ipfs/go-hamt-ipld"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
-
-	"github.com/filecoin-project/go-address"
-	"github.com/filecoin-project/lotus/chain/actors"
-	"github.com/filecoin-project/lotus/chain/actors/aerrors"
-	"github.com/filecoin-project/lotus/chain/state"
-	"github.com/filecoin-project/lotus/chain/types"
 )
 
 func init() {
@@ -28,6 +22,7 @@ func init() {
 
 var EmptyObjectCid cid.Cid
 
+/*
 func TryCreateAccountActor(st *state.StateTree, addr address.Address) (*types.Actor, aerrors.ActorError) {
 	act, err := makeActor(st, addr)
 	if err != nil {
@@ -40,7 +35,9 @@ func TryCreateAccountActor(st *state.StateTree, addr address.Address) (*types.Ac
 
 	return act, nil
 }
+*/
 
+/*
 func makeActor(st *state.StateTree, addr address.Address) (*types.Actor, aerrors.ActorError) {
 	switch addr.Protocol() {
 	case address.BLS:
@@ -55,7 +52,9 @@ func makeActor(st *state.StateTree, addr address.Address) (*types.Actor, aerrors
 		return nil, aerrors.Newf(1, "address has unsupported protocol: %d", addr.Protocol())
 	}
 }
+*/
 
+/*
 func NewBLSAccountActor(st *state.StateTree, addr address.Address) (*types.Actor, aerrors.ActorError) {
 	var acstate actors.AccountActorState
 	acstate.Address = addr
@@ -73,7 +72,9 @@ func NewBLSAccountActor(st *state.StateTree, addr address.Address) (*types.Actor
 
 	return nact, nil
 }
+*/
 
+/*
 func NewSecp256k1AccountActor(st *state.StateTree, addr address.Address) (*types.Actor, aerrors.ActorError) {
 	nact := &types.Actor{
 		Code:    actors.AccountCodeCid,
@@ -83,3 +84,4 @@ func NewSecp256k1AccountActor(st *state.StateTree, addr address.Address) (*types
 
 	return nact, nil
 }
+*/

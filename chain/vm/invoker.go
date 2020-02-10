@@ -2,15 +2,12 @@ package vm
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"reflect"
 
 	"github.com/ipfs/go-cid"
 	cbg "github.com/whyrusleeping/cbor-gen"
-	"golang.org/x/xerrors"
 
-	"github.com/filecoin-project/lotus/chain/actors"
 	"github.com/filecoin-project/lotus/chain/actors/aerrors"
 	"github.com/filecoin-project/lotus/chain/types"
 )
@@ -23,6 +20,7 @@ type invoker struct {
 type invokeFunc func(act *types.Actor, vmctx types.VMContext, params []byte) ([]byte, aerrors.ActorError)
 type nativeCode []invokeFunc
 
+/*
 func NewInvoker() *invoker {
 	inv := &invoker{
 		builtInCode:  make(map[cid.Cid]nativeCode),
@@ -41,7 +39,9 @@ func NewInvoker() *invoker {
 
 	return inv
 }
+*/
 
+/*
 func (inv *invoker) Invoke(act *types.Actor, vmctx types.VMContext, method uint64, params []byte) ([]byte, aerrors.ActorError) {
 
 	if act.Code == actors.AccountCodeCid {
@@ -59,6 +59,7 @@ func (inv *invoker) Invoke(act *types.Actor, vmctx types.VMContext, method uint6
 	return code[method](act, vmctx, params)
 
 }
+*/
 
 func (inv *invoker) Register(c cid.Cid, instance Invokee, state interface{}) {
 	code, err := inv.transform(instance)
@@ -160,6 +161,7 @@ func DecodeParams(b []byte, out interface{}) error {
 	return um.UnmarshalCBOR(bytes.NewReader(b))
 }
 
+/*
 func DumpActorState(code cid.Cid, b []byte) (interface{}, error) {
 	if code == actors.AccountCodeCid { // Account code special case
 		return nil, nil
@@ -184,3 +186,4 @@ func DumpActorState(code cid.Cid, b []byte) (interface{}, error) {
 
 	return rv.Elem().Interface(), nil
 }
+*/

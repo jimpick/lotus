@@ -2,13 +2,11 @@ package types
 
 import (
 	"bytes"
-	"math/big"
 
-	"github.com/filecoin-project/go-sectorbuilder"
+	// "github.com/filecoin-project/go-sectorbuilder"
 
 	block "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	"github.com/minio/sha256-simd"
 	"github.com/multiformats/go-multihash"
 	xerrors "golang.org/x/xerrors"
 
@@ -165,10 +163,11 @@ var blocksPerEpoch = NewInt(build.BlocksPerEpoch)
 
 const sha256bits = 256
 
+/*
 func IsTicketWinner(partialTicket []byte, ssizeI uint64, snum uint64, totpow BigInt) bool {
 	ssize := NewInt(ssizeI)
 	ssampled := ElectionPostChallengeCount(snum, 0) // TODO: faults in epost?
-	/*
+	# start
 		Need to check that
 		(h(vrfout) + 1) / (max(h) + 1) <= e * sectorSize / totalPower
 		max(h) == 2^256-1
@@ -186,7 +185,7 @@ func IsTicketWinner(partialTicket []byte, ssizeI uint64, snum uint64, totpow Big
 		(h(vrfout) + 1) / 2^256 <= e * sectorSize / totalPower * snum / c
 		or
 		h(vrfout) * totalPower * c < e * sectorSize * 2^256 * snum
-	*/
+	# end
 
 	h := sha256.Sum256(partialTicket)
 
@@ -203,10 +202,13 @@ func IsTicketWinner(partialTicket []byte, ssizeI uint64, snum uint64, totpow Big
 	// h(vrfout) * totalPower < e * sectorSize * 2^256?
 	return lhs.Cmp(rhs) < 0
 }
+*/
 
+/*
 func ElectionPostChallengeCount(sectors uint64, faults uint64) uint64 {
 	return sectorbuilder.ElectionPostChallengeCount(sectors, faults)
 }
+*/
 
 func (t *Ticket) Equals(ot *Ticket) bool {
 	return bytes.Equal(t.VRFProof, ot.VRFProof)

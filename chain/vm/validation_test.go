@@ -1,13 +1,6 @@
 package vm_test
 
-import (
-	"testing"
-
-	"github.com/filecoin-project/chain-validation/pkg/suites"
-
-	"github.com/filecoin-project/lotus/chain/validation"
-)
-
+/*
 func TestStorageMinerValidation(t *testing.T) {
 	t.SkipNow()
 	factory := validation.NewFactories()
@@ -33,3 +26,4 @@ func TestMultiSig(t *testing.T) {
 	suites.MultiSigActorProposeApprove(t, factory)
 	suites.MultiSigActorProposeCancel(t, factory)
 }
+*/

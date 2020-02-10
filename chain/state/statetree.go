@@ -2,16 +2,14 @@ package state
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/ipfs/go-cid"
 	hamt "github.com/ipfs/go-hamt-ipld"
 	logging "github.com/ipfs/go-log/v2"
 	"go.opencensus.io/trace"
-	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-address"
-	"github.com/filecoin-project/lotus/chain/actors"
+	// "github.com/filecoin-project/lotus/chain/actors"
 	"github.com/filecoin-project/lotus/chain/types"
 )
 
@@ -47,6 +45,7 @@ func LoadStateTree(cst *hamt.CborIpldStore, c cid.Cid) (*StateTree, error) {
 	}, nil
 }
 
+/*
 func (st *StateTree) SetActor(addr address.Address, act *types.Actor) error {
 	iaddr, err := st.LookupID(addr)
 	if err != nil {
@@ -65,7 +64,9 @@ func (st *StateTree) SetActor(addr address.Address, act *types.Actor) error {
 
 	return st.root.Set(context.TODO(), string(addr.Bytes()), act)
 }
+*/
 
+/*
 func (st *StateTree) LookupID(addr address.Address) (address.Address, error) {
 	if addr.Protocol() == address.ID {
 		return addr, nil
@@ -83,7 +84,9 @@ func (st *StateTree) LookupID(addr address.Address) (address.Address, error) {
 
 	return ias.Lookup(st.Store, addr)
 }
+*/
 
+/*
 func (st *StateTree) GetActor(addr address.Address) (*types.Actor, error) {
 	if addr == address.Undef {
 		return nil, fmt.Errorf("GetActor called on undefined address")
@@ -116,6 +119,7 @@ func (st *StateTree) GetActor(addr address.Address) (*types.Actor, error) {
 
 	return &act, nil
 }
+*/
 
 func (st *StateTree) Flush(ctx context.Context) (cid.Cid, error) {
 	ctx, span := trace.StartSpan(ctx, "stateTree.Flush")
@@ -148,6 +152,7 @@ func (st *StateTree) Snapshot(ctx context.Context) error {
 	return nil
 }
 
+/*
 func (st *StateTree) RegisterNewAddress(addr address.Address, act *types.Actor) (address.Address, error) {
 	var out address.Address
 	err := st.MutateActor(actors.InitAddress, func(initact *types.Actor) error {
@@ -180,6 +185,7 @@ func (st *StateTree) RegisterNewAddress(addr address.Address, act *types.Actor) 
 
 	return out, nil
 }
+*/
 
 func (st *StateTree) Revert() error {
 	nd, err := hamt.LoadNode(context.Background(), st.Store, st.snapshot)
@@ -191,6 +197,7 @@ func (st *StateTree) Revert() error {
 	return nil
 }
 
+/*
 func (st *StateTree) MutateActor(addr address.Address, f func(*types.Actor) error) error {
 	act, err := st.GetActor(addr)
 	if err != nil {
@@ -203,3 +210,4 @@ func (st *StateTree) MutateActor(addr address.Address, f func(*types.Actor) erro
 
 	return st.SetActor(addr, act)
 }
+*/

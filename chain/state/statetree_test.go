@@ -1,15 +1,6 @@
 package state
 
-import (
-	"context"
-	"testing"
-
-	address "github.com/filecoin-project/go-address"
-	actors "github.com/filecoin-project/lotus/chain/actors"
-	"github.com/filecoin-project/lotus/chain/types"
-	hamt "github.com/ipfs/go-hamt-ipld"
-)
-
+/*
 func BenchmarkStateTreeSet(b *testing.B) {
 	cst := hamt.NewCborStore()
 	st, err := NewStateTree(cst)
@@ -36,7 +27,9 @@ func BenchmarkStateTreeSet(b *testing.B) {
 		}
 	}
 }
+*/
 
+/*
 func BenchmarkStateTreeSetFlush(b *testing.B) {
 	cst := hamt.NewCborStore()
 	st, err := NewStateTree(cst)
@@ -66,7 +59,9 @@ func BenchmarkStateTreeSetFlush(b *testing.B) {
 		}
 	}
 }
+*/
 
+/*
 func BenchmarkStateTree10kGetActor(b *testing.B) {
 	cst := hamt.NewCborStore()
 	st, err := NewStateTree(cst)
@@ -144,3 +139,4 @@ func TestSetCache(t *testing.T) {
 		t.Error("nonce didn't match")
 	}
 }
+*/

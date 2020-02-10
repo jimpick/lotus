@@ -17,12 +17,10 @@ import (
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/lotus/build"
-	"github.com/filecoin-project/lotus/chain/actors"
 	"github.com/filecoin-project/lotus/chain/actors/aerrors"
 	"github.com/filecoin-project/lotus/chain/state"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/lib/bufbstore"
-	"github.com/filecoin-project/lotus/lib/sigs"
 )
 
 var log = logging.Logger("vm")
@@ -132,6 +130,7 @@ func (vmc *VMContext) Origin() address.Address {
 }
 
 // Send allows the current execution context to invoke methods on other actors in the system
+/*
 func (vmc *VMContext) Send(to address.Address, method uint64, value types.BigInt, params []byte) ([]byte, aerrors.ActorError) {
 	ctx, span := trace.StartSpan(vmc.ctx, "vmc.Send")
 	defer span.End()
@@ -155,6 +154,7 @@ func (vmc *VMContext) Send(to address.Address, method uint64, value types.BigInt
 	ret, err, _ := vmc.vm.send(ctx, msg, vmc, 0)
 	return ret, err
 }
+*/
 
 // BlockHeight returns the height of the block this message was added to the chain in
 func (vmc *VMContext) BlockHeight() uint64 {
@@ -174,6 +174,7 @@ func (vmc *VMContext) ChargeGas(amount uint64) aerrors.ActorError {
 	return nil
 }
 
+/*
 func (vmc *VMContext) StateTree() (types.StateTree, aerrors.ActorError) {
 	if vmc.msg.To != actors.InitAddress {
 		return nil, aerrors.Escalate(fmt.Errorf("only init actor can access state tree directly"), "invalid use of StateTree")
@@ -181,9 +182,11 @@ func (vmc *VMContext) StateTree() (types.StateTree, aerrors.ActorError) {
 
 	return vmc.state, nil
 }
+*/
 
 const GasVerifySignature = 50
 
+/*
 func (vmctx *VMContext) VerifySignature(sig *types.Signature, act address.Address, data []byte) aerrors.ActorError {
 	if err := vmctx.ChargeGas(GasVerifySignature); err != nil {
 		return err
@@ -203,7 +206,9 @@ func (vmctx *VMContext) VerifySignature(sig *types.Signature, act address.Addres
 
 	return nil
 }
+*/
 
+/*
 func ResolveToKeyAddr(state types.StateTree, cst *hamt.CborIpldStore, addr address.Address) (address.Address, aerrors.ActorError) {
 	if addr.Protocol() == address.BLS || addr.Protocol() == address.SECP256K1 {
 		return addr, nil
@@ -225,7 +230,9 @@ func ResolveToKeyAddr(state types.StateTree, cst *hamt.CborIpldStore, addr addre
 
 	return aast.Address, nil
 }
+*/
 
+/*
 func (vmctx *VMContext) GetBalance(a address.Address) (types.BigInt, aerrors.ActorError) {
 	act, err := vmctx.state.GetActor(a)
 	switch err {
@@ -237,6 +244,7 @@ func (vmctx *VMContext) GetBalance(a address.Address) (types.BigInt, aerrors.Act
 		return act.Balance, nil
 	}
 }
+*/
 
 func (vmctx *VMContext) Context() context.Context {
 	return vmctx.ctx
@@ -328,9 +336,9 @@ func NewVM(base cid.Cid, height uint64, r Rand, maddr address.Address, cbs block
 		buf:         buf,
 		blockHeight: height,
 		blockMiner:  maddr,
-		inv:         NewInvoker(),
-		rand:        r, // TODO: Probably should be a syscall
-		Syscalls:    syscalls,
+		// inv:         NewInvoker(),
+		rand:     r, // TODO: Probably should be a syscall
+		Syscalls: syscalls,
 	}, nil
 }
 
@@ -343,6 +351,7 @@ type ApplyRet struct {
 	ActorErr aerrors.ActorError
 }
 
+/*
 func (vm *VM) send(ctx context.Context, msg *types.Message, parent *VMContext,
 	gasCharge uint64) ([]byte, aerrors.ActorError, *VMContext) {
 
@@ -398,6 +407,7 @@ func (vm *VM) send(ctx context.Context, msg *types.Message, parent *VMContext,
 
 	return nil, nil, vmctx
 }
+*/
 
 func checkMessage(msg *types.Message) error {
 	if msg.GasLimit == types.EmptyInt {
@@ -415,6 +425,7 @@ func checkMessage(msg *types.Message) error {
 	return nil
 }
 
+/*
 func (vm *VM) ApplyMessage(ctx context.Context, msg *types.Message) (*ApplyRet, error) {
 	ctx, span := trace.StartSpan(ctx, "vm.ApplyMessage")
 	defer span.End()
@@ -514,11 +525,13 @@ func (vm *VM) ApplyMessage(ctx context.Context, msg *types.Message) (*ApplyRet, 
 		ActorErr: actorErr,
 	}, nil
 }
+*/
 
 func (vm *VM) SetBlockMiner(m address.Address) {
 	vm.blockMiner = m
 }
 
+/*
 func (vm *VM) ActorBalance(addr address.Address) (types.BigInt, aerrors.ActorError) {
 	act, err := vm.cstate.GetActor(addr)
 	if err != nil {
@@ -527,6 +540,7 @@ func (vm *VM) ActorBalance(addr address.Address) (types.BigInt, aerrors.ActorErr
 
 	return act.Balance, nil
 }
+*/
 
 func (vm *VM) Flush(ctx context.Context) (cid.Cid, error) {
 	_, span := trace.StartSpan(ctx, "vm.Flush")
@@ -622,14 +636,17 @@ func copyRec(from, to blockstore.Blockstore, root cid.Cid, cp func(block.Block) 
 	return nil
 }
 
+/*
 func (vm *VM) StateTree() types.StateTree {
 	return vm.cstate
 }
+*/
 
 func (vm *VM) SetBlockHeight(h uint64) {
 	vm.blockHeight = h
 }
 
+/*
 func (vm *VM) Invoke(act *types.Actor, vmctx *VMContext, method uint64, params []byte) ([]byte, aerrors.ActorError) {
 	ctx, span := trace.StartSpan(vmctx.ctx, "vm.Invoke")
 	defer span.End()
@@ -655,6 +672,7 @@ func (vm *VM) Invoke(act *types.Actor, vmctx *VMContext, method uint64, params [
 	}
 	return ret, nil
 }
+*/
 
 func Transfer(from, to *types.Actor, amt types.BigInt) error {
 	if from == to {
