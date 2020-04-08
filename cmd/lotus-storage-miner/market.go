@@ -32,7 +32,7 @@ var setPriceCmd = &cli.Command{
 			return err
 		}
 
-		return api.SetPrice(ctx, types.BigInt(fp))
+		return api.MarketSetPrice(ctx, types.BigInt(fp))
 	},
 }
 
@@ -46,8 +46,9 @@ var dealsCmd = &cli.Command{
 }
 
 var dealsImportDataCmd = &cli.Command{
-	Name:  "import-data",
-	Usage: "Manually import data for a deal",
+	Name:      "import-data",
+	Usage:     "Manually import data for a deal",
+	ArgsUsage: "<proposal CID> <file>",
 	Action: func(cctx *cli.Context) error {
 		api, closer, err := lcli.GetStorageMinerAPI(cctx)
 		if err != nil {
@@ -57,7 +58,7 @@ var dealsImportDataCmd = &cli.Command{
 
 		ctx := lcli.DaemonContext(cctx)
 
-		if cctx.Args().Len() == 2 {
+		if cctx.Args().Len() < 2 {
 			return fmt.Errorf("must specify proposal CID and file path")
 		}
 
@@ -85,7 +86,7 @@ var dealsListCmd = &cli.Command{
 
 		ctx := lcli.DaemonContext(cctx)
 
-		deals, err := api.DealsList(ctx)
+		deals, err := api.MarketListIncompleteDeals(ctx)
 		if err != nil {
 			return err
 		}

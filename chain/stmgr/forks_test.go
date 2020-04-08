@@ -78,7 +78,7 @@ func (ta *testActor) Constructor(rt runtime.Runtime, params *adt.EmptyValue) *ad
 	rt.State().Create(&testActorState{11})
 	fmt.Println("NEW ACTOR ADDRESS IS: ", rt.Message().Receiver())
 
-	return &adt.EmptyValue{}
+	return adt.Empty
 }
 
 func (ta *testActor) TestMethod(rt runtime.Runtime, params *adt.EmptyValue) *adt.EmptyValue {
@@ -95,7 +95,7 @@ func (ta *testActor) TestMethod(rt runtime.Runtime, params *adt.EmptyValue) *adt
 		}
 	}
 
-	return &adt.EmptyValue{}
+	return adt.Empty
 }
 
 func TestForkHeightTriggers(t *testing.T) {
@@ -181,7 +181,7 @@ func TestForkHeightTriggers(t *testing.T) {
 		To:       builtin.InitActorAddr,
 		Method:   builtin.MethodsInit.Exec,
 		Params:   enc,
-		GasLimit: types.NewInt(10000),
+		GasLimit: 10000,
 		GasPrice: types.NewInt(0),
 	}
 	sig, err := cg.Wallet().Sign(ctx, cg.Banker(), m.Cid().Bytes())
@@ -208,7 +208,7 @@ func TestForkHeightTriggers(t *testing.T) {
 			Method:   2,
 			Params:   nil,
 			Nonce:    nonce,
-			GasLimit: types.NewInt(10000),
+			GasLimit: 10000,
 			GasPrice: types.NewInt(0),
 		}
 		nonce++

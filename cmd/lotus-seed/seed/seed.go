@@ -16,8 +16,6 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-address"
-	sectorbuilder "github.com/filecoin-project/go-sectorbuilder"
-	"github.com/filecoin-project/go-sectorbuilder/fs"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/abi/big"
 	"github.com/filecoin-project/specs-actors/actors/builtin/market"
@@ -26,7 +24,9 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/chain/wallet"
 	"github.com/filecoin-project/lotus/genesis"
-	"github.com/filecoin-project/lotus/node/config"
+	"github.com/filecoin-project/sector-storage/ffiwrapper"
+	"github.com/filecoin-project/sector-storage/ffiwrapper/basicfs"
+	"github.com/filecoin-project/sector-storage/stores"
 )
 
 var log = logging.Logger("preseal")
@@ -42,8 +42,12 @@ func PreSeal(maddr address.Address, pt abi.RegisteredProof, offset abi.SectorNum
 		return nil, nil, err
 	}
 
-	cfg := &sectorbuilder.Config{
-		Miner:         maddr,
+	mid, err := address.IDFromAddress(maddr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cfg := &ffiwrapper.Config{
 		SealProofType: spt,
 		PoStProofType: ppt,
 	}
@@ -54,12 +58,11 @@ func PreSeal(maddr address.Address, pt abi.RegisteredProof, offset abi.SectorNum
 
 	next := offset
 
-	sbfs := &fs.Basic{
-		Miner: maddr,
-		Root:  sbroot,
+	sbfs := &basicfs.Provider{
+		Root: sbroot,
 	}
 
-	sb, err := sectorbuilder.New(sbfs, cfg)
+	sb, err := ffiwrapper.New(sbfs, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -71,7 +74,7 @@ func PreSeal(maddr address.Address, pt abi.RegisteredProof, offset abi.SectorNum
 
 	var sealedSectors []*genesis.PreSeal
 	for i := 0; i < sectors; i++ {
-		sid := next
+		sid := abi.SectorID{Miner: abi.ActorID(mid), Number: next}
 		next++
 
 		pi, err := sb.AddPiece(context.TODO(), sid, nil, abi.PaddedPieceSize(ssize).Unpadded(), rand.Reader)
@@ -89,7 +92,7 @@ func PreSeal(maddr address.Address, pt abi.RegisteredProof, offset abi.SectorNum
 			return nil, nil, xerrors.Errorf("commit: %w", err)
 		}
 
-		scid, ucid, err := sb.SealPreCommit2(context.TODO(), sid, in2)
+		cids, err := sb.SealPreCommit2(context.TODO(), sid, in2)
 		if err != nil {
 			return nil, nil, xerrors.Errorf("commit: %w", err)
 		}
@@ -98,11 +101,11 @@ func PreSeal(maddr address.Address, pt abi.RegisteredProof, offset abi.SectorNum
 			return nil, nil, xerrors.Errorf("trim cache: %w", err)
 		}
 
-		log.Warn("PreCommitOutput: ", sid, scid, ucid)
+		log.Warn("PreCommitOutput: ", sid, cids.Sealed, cids.Unsealed)
 		sealedSectors = append(sealedSectors, &genesis.PreSeal{
-			CommR:     scid,
-			CommD:     ucid,
-			SectorID:  sid,
+			CommR:     cids.Sealed,
+			CommD:     cids.Unsealed,
+			SectorID:  sid.Number,
 			ProofType: pt,
 		})
 	}
@@ -134,8 +137,8 @@ func PreSeal(maddr address.Address, pt abi.RegisteredProof, offset abi.SectorNum
 	}
 
 	{
-		b, err := json.MarshalIndent(&config.StorageMeta{
-			ID:       uuid.New().String(),
+		b, err := json.MarshalIndent(&stores.LocalStorageMeta{
+			ID:       stores.ID(uuid.New().String()),
 			Weight:   0, // read-only
 			CanSeal:  false,
 			CanStore: false,

@@ -10,13 +10,13 @@ import (
 	"github.com/ipfs/go-hamt-ipld"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/prometheus/common/log"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	"go.uber.org/fx"
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-amt-ipld/v2"
+	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/abi/big"
 	"github.com/filecoin-project/specs-actors/actors/builtin"
@@ -46,6 +46,10 @@ type StateAPI struct {
 
 	StateManager *stmgr.StateManager
 	Chain        *store.ChainStore
+}
+
+func (a *StateAPI) StateNetworkName(ctx context.Context) (dtypes.NetworkName, error) {
+	return stmgr.GetNetworkName(ctx, a.StateManager, a.Chain.GetHeaviestTipSet().ParentState())
 }
 
 func (a *StateAPI) StateMinerSectors(ctx context.Context, addr address.Address, tsk types.TipSetKey) ([]*api.ChainSectorInfo, error) {
@@ -189,6 +193,7 @@ func (a *StateAPI) StateReplay(ctx context.Context, tsk types.TipSetKey, mc cid.
 		MsgRct:             &r.MessageReceipt,
 		InternalExecutions: r.InternalExecutions,
 		Error:              errstr,
+		Duration:           r.Duration,
 	}, nil
 }
 
@@ -260,6 +265,11 @@ func (a *StateAPI) StateReadState(ctx context.Context, act *types.Actor, tsk typ
 }
 
 // This is on StateAPI because miner.Miner requires this, and MinerAPI requires miner.Miner
+func (a *StateAPI) MinerGetBaseInfo(ctx context.Context, maddr address.Address, tsk types.TipSetKey) (*api.MiningBaseInfo, error) {
+	return stmgr.MinerGetBaseInfo(ctx, a.StateManager, tsk, maddr)
+}
+
+// This is on StateAPI because miner.Miner requires this, and MinerAPI requires miner.Miner
 func (a *StateAPI) MinerCreateBlock(ctx context.Context, addr address.Address, parentsTSK types.TipSetKey, ticket *types.Ticket, proof *types.EPostProof, msgs []*types.SignedMessage, height abi.ChainEpoch, ts uint64) (*types.BlockMsg, error) {
 	parents, err := a.Chain.GetTipSetFromKey(parentsTSK)
 	if err != nil {
@@ -282,7 +292,7 @@ func (a *StateAPI) MinerCreateBlock(ctx context.Context, addr address.Address, p
 	return &out, nil
 }
 
-func (a *StateAPI) StateWaitMsg(ctx context.Context, msg cid.Cid) (*api.MsgWait, error) {
+func (a *StateAPI) StateWaitMsg(ctx context.Context, msg cid.Cid) (*api.MsgLookup, error) {
 	// TODO: consider using event system for this, expose confidence
 
 	ts, recpt, err := a.StateManager.WaitForMessage(ctx, msg)
@@ -290,10 +300,26 @@ func (a *StateAPI) StateWaitMsg(ctx context.Context, msg cid.Cid) (*api.MsgWait,
 		return nil, err
 	}
 
-	return &api.MsgWait{
+	return &api.MsgLookup{
 		Receipt: *recpt,
 		TipSet:  ts,
 	}, nil
+}
+
+func (a *StateAPI) StateSearchMsg(ctx context.Context, msg cid.Cid) (*api.MsgLookup, error) {
+	ts, recpt, err := a.StateManager.SearchForMessage(ctx, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	if ts != nil {
+		return &api.MsgLookup{
+			Receipt: *recpt,
+			TipSet:  ts,
+		}, nil
+	} else {
+		return nil, nil
+	}
 }
 
 func (a *StateAPI) StateGetReceipt(ctx context.Context, msg cid.Cid, tsk types.TipSetKey) (*types.MessageReceipt, error) {
@@ -486,6 +512,14 @@ func (a *StateAPI) StateMinerSectorCount(ctx context.Context, addr address.Addre
 		return api.MinerSectors{}, xerrors.Errorf("loading tipset %s: %w", tsk, err)
 	}
 	return stmgr.SectorSetSizes(ctx, a.StateManager, addr, ts)
+}
+
+func (a *StateAPI) StateSectorPreCommitInfo(ctx context.Context, maddr address.Address, n abi.SectorNumber, tsk types.TipSetKey) (miner.SectorPreCommitOnChainInfo, error) {
+	ts, err := a.Chain.GetTipSetFromKey(tsk)
+	if err != nil {
+		return miner.SectorPreCommitOnChainInfo{}, xerrors.Errorf("loading tipset %s: %w", tsk, err)
+	}
+	return stmgr.PreCommitInfo(ctx, a.StateManager, maddr, n, ts)
 }
 
 func (a *StateAPI) StateListMessages(ctx context.Context, match *types.Message, tsk types.TipSetKey, toheight abi.ChainEpoch) ([]cid.Cid, error) {

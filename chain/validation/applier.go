@@ -2,16 +2,16 @@ package validation
 
 import (
 	"context"
+	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/specs-actors/actors/abi"
+	"github.com/filecoin-project/specs-actors/actors/abi/big"
 	"github.com/filecoin-project/specs-actors/actors/builtin"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
-	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 	"github.com/ipfs/go-cid"
 
-	"github.com/filecoin-project/go-sectorbuilder"
-
 	vtypes "github.com/filecoin-project/chain-validation/chain/types"
+	vdrivers "github.com/filecoin-project/chain-validation/drivers"
 	vstate "github.com/filecoin-project/chain-validation/state"
 
 	"github.com/filecoin-project/lotus/chain/stmgr"
@@ -30,39 +30,14 @@ func NewApplier() *Applier {
 	return &Applier{}
 }
 
-func (a *Applier) ApplyMessage(eCtx *vtypes.ExecutionContext, state vstate.VMWrapper, message *vtypes.Message) (vtypes.MessageReceipt, error) {
-	ctx := context.TODO()
-	st := state.(*StateWrapper)
-
-	base := st.Root()
-	randSrc := &vmRand{eCtx}
-	lotusVM, err := vm.NewVM(base, abi.ChainEpoch(eCtx.Epoch), randSrc, eCtx.Miner, st.bs, vm.Syscalls(sectorbuilder.ProofVerifier))
-	if err != nil {
-		return vtypes.MessageReceipt{}, err
-	}
-
-	ret, err := lotusVM.ApplyMessage(ctx, toLotusMsg(message))
-	if err != nil {
-		return vtypes.MessageReceipt{}, err
-	}
-
-	st.stateRoot, err = lotusVM.Flush(ctx)
-	if err != nil {
-		return vtypes.MessageReceipt{}, err
-	}
-
-	mr := vtypes.MessageReceipt{
-		ExitCode:    exitcode.ExitCode(ret.ExitCode),
-		ReturnValue: ret.Return,
-		GasUsed:     ret.GasUsed,
-	}
-
-	return mr, nil
+func (a *Applier) ApplyMessage(eCtx *vtypes.ExecutionContext, state vstate.VMWrapper, message *vtypes.Message) (vtypes.MessageReceipt, abi.TokenAmount, abi.TokenAmount, error) {
+	lm := toLotusMsg(message)
+	return a.applyMessage(eCtx, state, lm)
 }
 
 func (a *Applier) ApplyTipSetMessages(state vstate.VMWrapper, blocks []vtypes.BlockMessagesInfo, epoch abi.ChainEpoch, rnd vstate.RandomnessSource) ([]vtypes.MessageReceipt, error) {
 	sw := state.(*StateWrapper)
-	cs := store.NewChainStore(sw.bs, sw.ds, nil)
+	cs := store.NewChainStore(sw.bs, sw.ds, vdrivers.NewChainValidationSyscalls())
 	sm := stmgr.NewStateManager(cs)
 
 	var bms []stmgr.BlockMessages
@@ -77,7 +52,7 @@ func (a *Applier) ApplyTipSetMessages(state vstate.VMWrapper, blocks []vtypes.Bl
 		}
 
 		for _, m := range b.SECPMessages {
-			bm.SecpkMessages = append(bm.SecpkMessages, toLotusMsg(&m.Message))
+			bm.SecpkMessages = append(bm.SecpkMessages, toLotusSignedMsg(m))
 		}
 
 		bms = append(bms, bm)
@@ -88,11 +63,15 @@ func (a *Applier) ApplyTipSetMessages(state vstate.VMWrapper, blocks []vtypes.Bl
 		if msg.From == builtin.SystemActorAddr {
 			return nil // ignore reward and cron calls
 		}
+		rval := ret.Return
+		if rval == nil {
+			rval = []byte{} // chain validation tests expect empty arrays to not be nil...
+		}
 		receipts = append(receipts, vtypes.MessageReceipt{
-			ExitCode:    exitcode.ExitCode(ret.ExitCode),
-			ReturnValue: ret.Return,
+			ExitCode:    ret.ExitCode,
+			ReturnValue: rval,
 
-			GasUsed: ret.GasUsed,
+			GasUsed: vtypes.GasUnits(ret.GasUsed),
 		})
 		return nil
 	})
@@ -103,6 +82,19 @@ func (a *Applier) ApplyTipSetMessages(state vstate.VMWrapper, blocks []vtypes.Bl
 	state.(*StateWrapper).stateRoot = sroot
 
 	return receipts, nil
+}
+func (a *Applier) ApplySignedMessage(eCtx *vtypes.ExecutionContext, state vstate.VMWrapper, msg *vtypes.SignedMessage) (vtypes.MessageReceipt, abi.TokenAmount, abi.TokenAmount, error) {
+	var lm types.ChainMsg
+	switch msg.Signature.Type {
+	case crypto.SigTypeSecp256k1:
+		lm = toLotusSignedMsg(msg)
+	case crypto.SigTypeBLS:
+		lm = toLotusMsg(&msg.Message)
+	default:
+		return vtypes.MessageReceipt{}, big.Zero(), big.Zero(), xerrors.New("Unknown signature type")
+	}
+	// TODO: Validate the sig first
+	return a.applyMessage(eCtx, state, lm)
 }
 
 type randWrapper struct {
@@ -121,18 +113,60 @@ func (*vmRand) GetRandomness(ctx context.Context, dst crypto.DomainSeparationTag
 	panic("implement me")
 }
 
+func (a *Applier) applyMessage(eCtx *vtypes.ExecutionContext, state vstate.VMWrapper, lm types.ChainMsg) (vtypes.MessageReceipt, abi.TokenAmount, abi.TokenAmount, error) {
+	ctx := context.TODO()
+	st := state.(*StateWrapper)
+
+	base := st.Root()
+	randSrc := &vmRand{eCtx}
+	lotusVM, err := vm.NewVM(base, eCtx.Epoch, randSrc, eCtx.Miner, st.bs, vdrivers.NewChainValidationSyscalls())
+	if err != nil {
+		return vtypes.MessageReceipt{}, big.Zero(), big.Zero(), err
+	}
+
+	ret, err := lotusVM.ApplyMessage(ctx, lm)
+	if err != nil {
+		return vtypes.MessageReceipt{}, big.Zero(), big.Zero(), err
+	}
+
+	rval := ret.Return
+	if rval == nil {
+		rval = []byte{}
+	}
+
+	st.stateRoot, err = lotusVM.Flush(ctx)
+	if err != nil {
+		return vtypes.MessageReceipt{}, big.Zero(), big.Zero(), err
+	}
+
+	mr := vtypes.MessageReceipt{
+		ExitCode:    ret.ExitCode,
+		ReturnValue: rval,
+		GasUsed:     vtypes.GasUnits(ret.GasUsed),
+	}
+
+	return mr, ret.Penalty, abi.NewTokenAmount(ret.GasUsed), nil
+}
+
 func toLotusMsg(msg *vtypes.Message) *types.Message {
 	return &types.Message{
 		To:   msg.To,
 		From: msg.From,
 
-		Nonce:  uint64(msg.CallSeqNum),
+		Nonce:  msg.CallSeqNum,
 		Method: msg.Method,
 
 		Value:    types.BigInt{Int: msg.Value.Int},
 		GasPrice: types.BigInt{Int: msg.GasPrice.Int},
-		GasLimit: types.NewInt(uint64(msg.GasLimit)),
+		GasLimit: msg.GasLimit,
 
 		Params: msg.Params,
+	}
+}
+
+func toLotusSignedMsg(msg *vtypes.SignedMessage) *types.SignedMessage {
+	return &types.SignedMessage{
+		Message:   *toLotusMsg(&msg.Message),
+		Signature: msg.Signature,
 	}
 }

@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"github.com/filecoin-project/go-address"
 	"time"
 
 	"github.com/filecoin-project/specs-actors/actors/crypto"
@@ -67,7 +68,7 @@ func (s *FPoStScheduler) declareFaults(ctx context.Context, fc uint64, params *m
 		Method:   builtin.MethodsMiner.DeclareTemporaryFaults,
 		Params:   enc,
 		Value:    types.NewInt(0),
-		GasLimit: types.NewInt(10000000), // i dont know help
+		GasLimit: 10000000, // i dont know help
 		GasPrice: types.NewInt(1),
 	}
 
@@ -187,19 +188,24 @@ func (s *FPoStScheduler) runPost(ctx context.Context, eps abi.ChainEpoch, ts *ty
 		"sectors", len(ssi),
 		"faults", len(faults))
 
-	scandidates, proof, err := s.sb.GenerateFallbackPoSt(ssi, abi.PoStRandomness(rand), faults)
+	mid, err := address.IDFromAddress(s.actor)
+	if err != nil {
+		return nil, err
+	}
+
+	postOut, err := s.sb.GenerateFallbackPoSt(ctx, abi.ActorID(mid), ssi, abi.PoStRandomness(rand), faults)
 	if err != nil {
 		return nil, xerrors.Errorf("running post failed: %w", err)
 	}
 
-	if len(scandidates) == 0 {
+	if len(postOut.PoStInputs) == 0 {
 		return nil, xerrors.Errorf("received zero candidates back from generate fallback post")
 	}
 
 	// TODO: until we figure out how fallback post is really supposed to work,
 	// let's just pass a single candidate...
-	scandidates = scandidates[:1]
-	proof = proof[:1]
+	scandidates := postOut.PoStInputs[:1]
+	proof := postOut.Proof[:1]
 
 	elapsed := time.Since(tsStart)
 	log.Infow("submitting PoSt", "pLen", len(proof), "elapsed", elapsed)
@@ -258,8 +264,8 @@ func (s *FPoStScheduler) submitPost(ctx context.Context, proof *abi.OnChainPoStV
 		From:     s.worker,
 		Method:   builtin.MethodsMiner.SubmitWindowedPoSt,
 		Params:   enc,
-		Value:    types.NewInt(1000),     // currently hard-coded late fee in actor, returned if not late
-		GasLimit: types.NewInt(10000000), // i dont know help
+		Value:    types.NewInt(1000), // currently hard-coded late fee in actor, returned if not late
+		GasLimit: 10000000,           // i dont know help
 		GasPrice: types.NewInt(1),
 	}
 

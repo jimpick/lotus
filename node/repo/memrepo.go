@@ -16,6 +16,7 @@ import (
 
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/node/config"
+	"github.com/filecoin-project/sector-storage/stores"
 )
 
 type MemRepo struct {
@@ -40,12 +41,12 @@ type lockedMemRepo struct {
 
 	tempDir string
 	token   *byte
-	sc      *config.StorageConfig
+	sc      *stores.StorageConfig
 }
 
-func (lmem *lockedMemRepo) GetStorage() (config.StorageConfig, error) {
+func (lmem *lockedMemRepo) GetStorage() (stores.StorageConfig, error) {
 	if lmem.sc == nil {
-		lmem.sc = &config.StorageConfig{StoragePaths: []config.LocalPath{
+		lmem.sc = &stores.StorageConfig{StoragePaths: []stores.LocalPath{
 			{Path: lmem.Path()},
 		}}
 	}
@@ -53,7 +54,7 @@ func (lmem *lockedMemRepo) GetStorage() (config.StorageConfig, error) {
 	return *lmem.sc, nil
 }
 
-func (lmem *lockedMemRepo) SetStorage(c func(*config.StorageConfig)) error {
+func (lmem *lockedMemRepo) SetStorage(c func(*stores.StorageConfig)) error {
 	_, _ = lmem.GetStorage()
 
 	c(lmem.sc)
@@ -74,15 +75,15 @@ func (lmem *lockedMemRepo) Path() string {
 	}
 
 	if lmem.t == StorageMiner {
-		if err := config.WriteStorageFile(filepath.Join(t, fsStorageConfig), config.StorageConfig{
-			StoragePaths: []config.LocalPath{
+		if err := config.WriteStorageFile(filepath.Join(t, fsStorageConfig), stores.StorageConfig{
+			StoragePaths: []stores.LocalPath{
 				{Path: t},
 			}}); err != nil {
 			panic(err)
 		}
 
-		b, err := json.MarshalIndent(&config.StorageMeta{
-			ID:       uuid.New().String(),
+		b, err := json.MarshalIndent(&stores.LocalStorageMeta{
+			ID:       stores.ID(uuid.New().String()),
 			Weight:   10,
 			CanSeal:  true,
 			CanStore: true,
@@ -219,7 +220,7 @@ func (lmem *lockedMemRepo) Config() (interface{}, error) {
 	return lmem.mem.configF(lmem.t), nil
 }
 
-func (lmem *lockedMemRepo) Storage() (config.StorageConfig, error) {
+func (lmem *lockedMemRepo) Storage() (stores.StorageConfig, error) {
 	panic("implement me")
 }
 

@@ -49,7 +49,7 @@ var rewardsListCmd = &cli.Command{
 		}
 
 		for _, r := range rewards {
-			fmt.Printf("%d\t%d\t%s\n", r.StartEpoch, r.EndEpoch, r.Value)
+			fmt.Printf("%d\t%d\t%s\n", r.StartEpoch, r.EndEpoch, types.FIL(r.Value))
 		}
 
 		return nil
@@ -100,7 +100,7 @@ var rewardsRedeemCmd = &cli.Command{
 			Nonce:    workerNonce,
 			Value:    types.NewInt(0),
 			GasPrice: types.NewInt(1),
-			GasLimit: types.NewInt(100000),
+			GasLimit: 100000,
 			Method:   builtin.MethodsReward.WithdrawReward,
 			Params:   params,
 		})

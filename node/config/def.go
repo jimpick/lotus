@@ -3,6 +3,8 @@ package config
 import (
 	"encoding"
 	"time"
+
+	sectorstorage "github.com/filecoin-project/sector-storage"
 )
 
 // Common is common config between full node and miner
@@ -23,13 +25,14 @@ type FullNode struct {
 type StorageMiner struct {
 	Common
 
-	Storage Storage
+	Storage sectorstorage.SealerConfig
 }
 
 // API contains configs for API endpoint
 type API struct {
-	ListenAddress string
-	Timeout       Duration
+	ListenAddress       string
+	RemoteListenAddress string
+	Timeout             Duration
 }
 
 // Libp2p contains configs for libp2p
@@ -49,10 +52,6 @@ type Metrics struct {
 	Nickname      string
 	HeadNotifs    bool
 	PubsubTracing bool
-}
-
-// // Storage Miner
-type Storage struct {
 }
 
 func defCommon() Common {
@@ -75,7 +74,7 @@ func defCommon() Common {
 
 }
 
-// Default returns the default config
+// DefaultFullNode returns the default config
 func DefaultFullNode() *FullNode {
 	return &FullNode{
 		Common: defCommon(),
@@ -86,9 +85,14 @@ func DefaultStorageMiner() *StorageMiner {
 	cfg := &StorageMiner{
 		Common: defCommon(),
 
-		Storage: Storage{},
+		Storage: sectorstorage.SealerConfig{
+			AllowPreCommit1: true,
+			AllowPreCommit2: true,
+			AllowCommit:     true,
+		},
 	}
 	cfg.Common.API.ListenAddress = "/ip4/127.0.0.1/tcp/2345/http"
+	cfg.Common.API.RemoteListenAddress = "127.0.0.1:2345"
 	return cfg
 }
 

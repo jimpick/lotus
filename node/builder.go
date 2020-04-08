@@ -22,8 +22,8 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket/discovery"
 	"github.com/filecoin-project/go-fil-markets/storagemarket"
-	deals "github.com/filecoin-project/go-fil-markets/storagemarket/impl"
-	sectorbuilder "github.com/filecoin-project/go-sectorbuilder"
+	"github.com/filecoin-project/go-fil-markets/storagemarket/impl/requestvalidation"
+
 	"github.com/filecoin-project/specs-actors/actors/runtime"
 	storage2 "github.com/filecoin-project/specs-storage/storage"
 
@@ -47,6 +47,7 @@ import (
 	"github.com/filecoin-project/lotus/node/config"
 	"github.com/filecoin-project/lotus/node/hello"
 	"github.com/filecoin-project/lotus/node/impl"
+	"github.com/filecoin-project/lotus/node/impl/common"
 	"github.com/filecoin-project/lotus/node/modules"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
@@ -56,9 +57,10 @@ import (
 	"github.com/filecoin-project/lotus/paychmgr"
 	"github.com/filecoin-project/lotus/storage"
 	"github.com/filecoin-project/lotus/storage/sealing"
-	"github.com/filecoin-project/lotus/storage/sealmgr"
-	"github.com/filecoin-project/lotus/storage/sealmgr/advmgr"
 	"github.com/filecoin-project/lotus/storage/sectorblocks"
+	sectorstorage "github.com/filecoin-project/sector-storage"
+	"github.com/filecoin-project/sector-storage/ffiwrapper"
+	"github.com/filecoin-project/sector-storage/stores"
 )
 
 var log = logging.Logger("builder")
@@ -206,7 +208,7 @@ func Online() Option {
 
 			Override(HandleIncomingMessagesKey, modules.HandleIncomingMessages),
 
-			Override(new(sectorbuilder.Verifier), sectorbuilder.ProofVerifier),
+			Override(new(ffiwrapper.Verifier), ffiwrapper.ProofVerifier),
 			Override(new(runtime.Syscalls), vm.Syscalls),
 			Override(new(*store.ChainStore), modules.ChainStore),
 			Override(new(*stmgr.StateManager), stmgr.NewStateManager),
@@ -224,15 +226,20 @@ func Online() Option {
 			Override(new(*messagepool.MessagePool), modules.MessagePool),
 
 			Override(new(modules.Genesis), modules.ErrorGenesis),
-			Override(SetGenesisKey, modules.SetGenesis),
+			Override(new(dtypes.AfterGenesisSet), modules.SetGenesis),
+			Override(SetGenesisKey, modules.DoSetGenesis),
 
+			Override(new(dtypes.NetworkName), modules.NetworkName),
 			Override(new(*hello.Service), hello.NewHelloService),
 			Override(new(*blocksync.BlockSyncService), blocksync.NewBlockSyncService),
 			Override(new(*peermgr.PeerMgr), peermgr.NewPeerMgr),
 
+			Override(new(dtypes.GraphsyncLoader), modules.GraphsyncLoader),
+			Override(new(dtypes.GraphsyncStorer), modules.GraphsyncStorer),
+			Override(new(dtypes.Graphsync), modules.Graphsync),
+
 			Override(RunHelloKey, modules.RunHello),
 			Override(RunBlockSyncKey, modules.RunBlockSync),
-			Override(RunChainGraphsync, modules.ChainGraphsync),
 			Override(RunPeerMgrKey, modules.RunPeerMgr),
 			Override(HandleIncomingBlocksKey, modules.HandleIncomingBlocks),
 
@@ -241,8 +248,9 @@ func Online() Option {
 
 			Override(new(retrievalmarket.RetrievalClient), modules.RetrievalClient),
 			Override(new(dtypes.ClientDealStore), modules.NewClientDealStore),
-			Override(new(dtypes.ClientDataTransfer), modules.NewClientDAGServiceDataTransfer),
-			Override(new(*deals.ClientRequestValidator), modules.NewClientRequestValidator),
+			Override(new(dtypes.ClientDatastore), modules.NewClientDatastore),
+			Override(new(dtypes.ClientDataTransfer), modules.NewClientGraphsyncDataTransfer),
+			Override(new(*requestvalidation.ClientRequestValidator), modules.NewClientRequestValidator),
 			Override(new(storagemarket.StorageClient), modules.StorageClient),
 			Override(new(storagemarket.StorageClientNode), storageadapter.NewClientNodeAdapter),
 			Override(RegisterClientValidatorKey, modules.RegisterClientValidator),
@@ -255,17 +263,26 @@ func Online() Option {
 
 		// Storage miner
 		ApplyIf(func(s *Settings) bool { return s.nodeType == repo.StorageMiner },
-			Override(new(*sectorbuilder.Config), modules.SectorBuilderConfig),
-			Override(new(advmgr.LocalStorage), From(new(repo.LockedRepo))),
-			Override(new(advmgr.SectorIDCounter), modules.SectorIDCounter),
-			Override(new(*advmgr.Manager), advmgr.New),
+			Override(new(api.Common), From(new(common.CommonAPI))),
+			Override(new(sectorstorage.StorageAuth), modules.StorageAuth),
 
-			Override(new(sealmgr.Manager), From(new(*advmgr.Manager))),
-			Override(new(storage2.Prover), From(new(sealmgr.Manager))),
+			Override(new(*stores.Index), stores.NewIndex),
+			Override(new(stores.SectorIndex), From(new(*stores.Index))),
+			Override(new(dtypes.MinerID), modules.MinerID),
+			Override(new(dtypes.MinerAddress), modules.MinerAddress),
+			Override(new(*ffiwrapper.Config), modules.ProofsConfig),
+			Override(new(stores.LocalStorage), From(new(repo.LockedRepo))),
+			Override(new(sealing.SectorIDCounter), modules.SectorIDCounter),
+			Override(new(*sectorstorage.Manager), modules.SectorStorage),
+			Override(new(ffiwrapper.Verifier), ffiwrapper.ProofVerifier),
+
+			Override(new(sectorstorage.SectorManager), From(new(*sectorstorage.Manager))),
+			Override(new(storage2.Prover), From(new(sectorstorage.SectorManager))),
 
 			Override(new(*sectorblocks.SectorBlocks), sectorblocks.NewSectorBlocks),
 			Override(new(sealing.TicketFn), modules.SealTicketGen),
 			Override(new(*storage.Miner), modules.StorageMiner),
+			Override(new(dtypes.NetworkName), modules.StorageNetworkName),
 
 			Override(new(dtypes.StagingBlockstore), modules.StagingBlockstore),
 			Override(new(dtypes.StagingDAG), modules.StagingDAG),
@@ -273,7 +290,7 @@ func Online() Option {
 			Override(new(retrievalmarket.RetrievalProvider), modules.RetrievalProvider),
 			Override(new(dtypes.ProviderDealStore), modules.NewProviderDealStore),
 			Override(new(dtypes.ProviderDataTransfer), modules.NewProviderDAGServiceDataTransfer),
-			Override(new(*deals.ProviderRequestValidator), modules.NewProviderRequestValidator),
+			Override(new(*requestvalidation.ProviderRequestValidator), modules.NewProviderRequestValidator),
 			Override(new(dtypes.ProviderPieceStore), modules.NewProviderPieceStore),
 			Override(new(storagemarket.StorageProvider), modules.StorageProvider),
 			Override(new(storagemarket.StorageProviderNode), storageadapter.NewProviderNodeAdapter),
@@ -314,15 +331,19 @@ func StorageMiner(out *api.StorageMiner) Option {
 func ConfigCommon(cfg *config.Common) Option {
 	return Options(
 		func(s *Settings) error { s.Config = true; return nil },
-
-		Override(SetApiEndpointKey, func(lr repo.LockedRepo) error {
-			apima, err := multiaddr.NewMultiaddr(cfg.API.ListenAddress)
-			if err != nil {
-				return err
-			}
-			return lr.SetAPIEndpoint(apima)
+		Override(new(dtypes.APIEndpoint), func() (dtypes.APIEndpoint, error) {
+			return multiaddr.NewMultiaddr(cfg.API.ListenAddress)
 		}),
+		Override(SetApiEndpointKey, func(lr repo.LockedRepo, e dtypes.APIEndpoint) error {
+			return lr.SetAPIEndpoint(e)
+		}),
+		Override(new(sectorstorage.URLs), func(e dtypes.APIEndpoint) (sectorstorage.URLs, error) {
+			ip := cfg.API.RemoteListenAddress
 
+			var urls sectorstorage.URLs
+			urls = append(urls, "http://"+ip+"/remote") // TODO: This makes no assumptions, and probably could...
+			return urls, nil
+		}),
 		ApplyIf(func(s *Settings) bool { return s.Online },
 			Override(StartListeningKey, lp2p.StartListening(cfg.Libp2p.ListenAddresses)),
 			Override(ConnectionManagerKey, lp2p.ConnectionManager(
@@ -361,7 +382,11 @@ func ConfigStorageMiner(c interface{}) Option {
 		return Error(xerrors.Errorf("invalid config from repo, got: %T", c))
 	}
 
-	return Options(ConfigCommon(&cfg.Common))
+	return Options(
+		ConfigCommon(&cfg.Common),
+
+		Override(new(sectorstorage.SealerConfig), cfg.Storage),
+	)
 }
 
 func Repo(r repo.Repo) Option {
@@ -387,7 +412,6 @@ func Repo(r repo.Repo) Option {
 			Override(new(dtypes.ClientFilestore), modules.ClientFstore),
 			Override(new(dtypes.ClientBlockstore), modules.ClientBlockstore),
 			Override(new(dtypes.ClientDAG), modules.ClientDAG),
-			Override(new(dtypes.ClientGraphsync), modules.ClientGraphsync),
 
 			Override(new(ci.PrivKey), lp2p.PrivKey),
 			Override(new(ci.PubKey), ci.PrivKey.GetPublic),

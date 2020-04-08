@@ -7,84 +7,14 @@ import (
 	"github.com/ipfs/go-cid"
 
 	"github.com/filecoin-project/go-address"
+	"github.com/filecoin-project/go-fil-markets/storagemarket"
+	sectorstorage "github.com/filecoin-project/sector-storage"
+	"github.com/filecoin-project/sector-storage/stores"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 
-	"github.com/filecoin-project/go-fil-markets/storagemarket"
 	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/filecoin-project/lotus/storage/sealing"
 )
-
-// alias because cbor-gen doesn't like non-alias types
-type SectorState = uint64
-
-const (
-	UndefinedSectorState SectorState = iota
-
-	// happy path
-	Empty
-	Packing // sector not in sealStore, and not on chain
-
-	Unsealed      // sealing / queued
-	PreCommitting // on chain pre-commit
-	WaitSeed      // waiting for seed
-	Committing
-	CommitWait // waiting for message to land on chain
-	FinalizeSector
-	Proving
-	_ // reserved
-	_
-	_
-
-	// recovery handling
-	// Reseal
-	_
-	_
-	_
-	_
-	_
-	_
-	_
-
-	// error modes
-	FailedUnrecoverable
-
-	SealFailed
-	PreCommitFailed
-	SealCommitFailed
-	CommitFailed
-	PackingFailed
-	_
-	_
-	_
-
-	Faulty        // sector is corrupted or gone for some reason
-	FaultReported // sector has been declared as a fault on chain
-	FaultedFinal  // fault declared on chain
-)
-
-var SectorStates = []string{
-	UndefinedSectorState: "UndefinedSectorState",
-	Empty:                "Empty",
-	Packing:              "Packing",
-	Unsealed:             "Unsealed",
-	PreCommitting:        "PreCommitting",
-	WaitSeed:             "WaitSeed",
-	Committing:           "Committing",
-	CommitWait:           "CommitWait",
-	FinalizeSector:       "FinalizeSector",
-	Proving:              "Proving",
-
-	SealFailed:       "SealFailed",
-	PreCommitFailed:  "PreCommitFailed",
-	SealCommitFailed: "SealCommitFailed",
-	CommitFailed:     "CommitFailed",
-	PackingFailed:    "PackingFailed",
-
-	FailedUnrecoverable: "FailedUnrecoverable",
-
-	Faulty:        "Faulty",
-	FaultReported: "FaultReported",
-	FaultedFinal:  "FaultedFinal",
-}
 
 // StorageMiner is a low-level interface to the Filecoin network storage miner node
 type StorageMiner interface {
@@ -105,22 +35,22 @@ type StorageMiner interface {
 
 	SectorsRefs(context.Context) (map[string][]SealedRef, error)
 
-	SectorsUpdate(context.Context, abi.SectorNumber, SectorState) error
+	SectorsUpdate(context.Context, abi.SectorNumber, sealing.SectorState) error
 
-	/*WorkerStats(context.Context) (sealsched.WorkerStats, error)*/
+	StorageList(ctx context.Context) (map[stores.ID][]stores.Decl, error)
+	StorageLocal(ctx context.Context) (map[stores.ID]string, error)
+	StorageStat(ctx context.Context, id stores.ID) (stores.FsStat, error)
 
-	/*// WorkerQueue registers a remote worker
-	WorkerQueue(context.Context, WorkerCfg) (<-chan WorkerTask, error)
+	// WorkerConnect tells the node to connect to workers RPC
+	WorkerConnect(context.Context, string) error
+	WorkerStats(context.Context) (map[uint64]sectorstorage.WorkerStats, error)
 
-	// WorkerQueue registers a remote worker
-	WorkerQueue(context.Context, sectorbuilder.WorkerCfg) (<-chan sectorbuilder.WorkerTask, error)
+	stores.SectorIndex
 
-	WorkerDone(ctx context.Context, task uint64, res sectorbuilder.SealRes) error
-	*/
 	MarketImportDealData(ctx context.Context, propcid cid.Cid, path string) error
 	MarketListDeals(ctx context.Context) ([]storagemarket.StorageDeal, error)
 	MarketListIncompleteDeals(ctx context.Context) ([]storagemarket.MinerDeal, error)
-	SetPrice(context.Context, types.BigInt) error
+	MarketSetPrice(context.Context, types.BigInt) error
 
 	DealsImportData(ctx context.Context, dealPropCid cid.Cid, file string) error
 	DealsList(ctx context.Context) ([]storagemarket.StorageDeal, error)
@@ -146,7 +76,7 @@ type SectorLog struct {
 
 type SectorInfo struct {
 	SectorID abi.SectorNumber
-	State    SectorState
+	State    sealing.SectorState
 	CommD    *cid.Cid
 	CommR    *cid.Cid
 	Proof    []byte

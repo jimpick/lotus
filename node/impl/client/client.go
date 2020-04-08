@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 
+	"github.com/filecoin-project/sector-storage/ffiwrapper"
+
 	"github.com/filecoin-project/specs-actors/actors/abi/big"
 	"golang.org/x/xerrors"
 
@@ -83,7 +85,7 @@ func (a *API) ClientStartDeal(ctx context.Context, params *api.StartDealParams) 
 		return nil, xerrors.Errorf("failed checking miners sector size: %w", err)
 	}
 
-	rt, _, err := api.ProofTypeFromSectorSize(ssize)
+	rt, _, err := ffiwrapper.ProofTypeFromSectorSize(ssize)
 	if err != nil {
 		return nil, xerrors.Errorf("bad sector size: %w", err)
 	}
@@ -124,13 +126,15 @@ func (a *API) ClientListDeals(ctx context.Context) ([]api.DealInfo, error) {
 		out[k] = api.DealInfo{
 			ProposalCid: v.ProposalCid,
 			State:       v.State,
+			Message:     v.Message,
 			Provider:    v.Proposal.Provider,
 
-			PieceRef: v.Proposal.PieceCID.Bytes(),
+			PieceCID: v.Proposal.PieceCID,
 			Size:     uint64(v.Proposal.PieceSize.Unpadded()),
 
 			PricePerEpoch: v.Proposal.StoragePricePerEpoch,
 			Duration:      uint64(v.Proposal.Duration()),
+			DealID:        v.DealID,
 		}
 	}
 
@@ -146,11 +150,13 @@ func (a *API) ClientGetDealInfo(ctx context.Context, d cid.Cid) (*api.DealInfo, 
 	return &api.DealInfo{
 		ProposalCid:   v.ProposalCid,
 		State:         v.State,
+		Message:       v.Message,
 		Provider:      v.Proposal.Provider,
-		PieceRef:      v.Proposal.PieceCID.Bytes(),
+		PieceCID:      v.Proposal.PieceCID,
 		Size:          uint64(v.Proposal.PieceSize.Unpadded()),
 		PricePerEpoch: v.Proposal.StoragePricePerEpoch,
 		Duration:      uint64(v.Proposal.Duration()),
+		DealID:        v.DealID,
 	}, nil
 }
 
@@ -374,7 +380,7 @@ func (a *API) ClientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 	unsubscribe()
 
 	if ref.IsCAR {
-		f, err := os.Open(ref.Path)
+		f, err := os.OpenFile(ref.Path, os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return err
 		}

@@ -11,10 +11,6 @@ import (
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-car"
 	"github.com/ipfs/go-datastore"
-	graphsync "github.com/ipfs/go-graphsync/impl"
-	"github.com/ipfs/go-graphsync/ipldbridge"
-	gsnet "github.com/ipfs/go-graphsync/network"
-	"github.com/ipfs/go-graphsync/storeutil"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/routing"
@@ -47,9 +43,9 @@ func ChainExchange(mctx helpers.MetricsCtx, lc fx.Lifecycle, host host.Host, rt 
 	return exch
 }
 
-func MessagePool(lc fx.Lifecycle, sm *stmgr.StateManager, ps *pubsub.PubSub, ds dtypes.MetadataDS) (*messagepool.MessagePool, error) {
+func MessagePool(lc fx.Lifecycle, sm *stmgr.StateManager, ps *pubsub.PubSub, ds dtypes.MetadataDS, nn dtypes.NetworkName) (*messagepool.MessagePool, error) {
 	mpp := messagepool.NewProvider(sm, ps)
-	mp, err := messagepool.New(mpp, ds)
+	mp, err := messagepool.New(mpp, ds, nn)
 	if err != nil {
 		return nil, xerrors.Errorf("constructing mpool: %w", err)
 	}
@@ -77,15 +73,6 @@ func ChainGCBlockstore(bs dtypes.ChainBlockstore, gcl dtypes.ChainGCLocker) dtyp
 
 func ChainBlockservice(bs dtypes.ChainBlockstore, rem dtypes.ChainExchange) dtypes.ChainBlockService {
 	return blockservice.New(bs, rem)
-}
-
-func ChainGraphsync(mctx helpers.MetricsCtx, lc fx.Lifecycle, ibs dtypes.ChainGCBlockstore, h host.Host) dtypes.ClientGraphsync {
-	graphsyncNetwork := gsnet.NewFromLibp2pHost(h)
-	ipldBridge := ipldbridge.NewIPLDBridge()
-	loader := storeutil.LoaderForBlockstore(ibs)
-	gs := graphsync.New(helpers.LifecycleCtx(mctx, lc), graphsyncNetwork, ipldBridge, loader, nil)
-
-	return gs
 }
 
 func ChainStore(lc fx.Lifecycle, bs dtypes.ChainBlockstore, ds dtypes.MetadataDS, syscalls runtime.Syscalls) *store.ChainStore {
@@ -128,21 +115,30 @@ func LoadGenesis(genBytes []byte) func(dtypes.ChainBlockstore) Genesis {
 	}
 }
 
-func SetGenesis(cs *store.ChainStore, g Genesis) error {
+func DoSetGenesis(_ dtypes.AfterGenesisSet) {}
+
+func SetGenesis(cs *store.ChainStore, g Genesis) (dtypes.AfterGenesisSet, error) {
 	_, err := cs.GetGenesis()
 	if err == nil {
-		return nil // already set, noop
+		return dtypes.AfterGenesisSet{}, nil // already set, noop
 	}
 	if err != datastore.ErrNotFound {
-		return xerrors.Errorf("getting genesis block failed: %w", err)
+		return dtypes.AfterGenesisSet{}, xerrors.Errorf("getting genesis block failed: %w", err)
 	}
 
 	genesis, err := g()
 	if err != nil {
-		return xerrors.Errorf("genesis func failed: %w", err)
+		return dtypes.AfterGenesisSet{}, xerrors.Errorf("genesis func failed: %w", err)
 	}
 
-	return cs.SetGenesis(genesis)
+	return dtypes.AfterGenesisSet{}, cs.SetGenesis(genesis)
+}
+
+func NetworkName(mctx helpers.MetricsCtx, lc fx.Lifecycle, cs *store.ChainStore, _ dtypes.AfterGenesisSet) (dtypes.NetworkName, error) {
+	ctx := helpers.LifecycleCtx(mctx, lc)
+
+	netName, err := stmgr.GetNetworkName(ctx, stmgr.NewStateManager(cs), cs.GetHeaviestTipSet().ParentState())
+	return netName, err
 }
 
 func NewSyncer(lc fx.Lifecycle, sm *stmgr.StateManager, bsync *blocksync.BlockSync, h host.Host) (*chain.Syncer, error) {

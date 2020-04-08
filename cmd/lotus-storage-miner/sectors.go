@@ -8,18 +8,30 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/filecoin-project/lotus/chain/types"
-
-	"github.com/filecoin-project/specs-actors/actors/abi"
 	"golang.org/x/xerrors"
 	"gopkg.in/urfave/cli.v2"
 
-	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/specs-actors/actors/abi"
+
+	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
+	"github.com/filecoin-project/lotus/storage/sealing"
 )
 
-var pledgeSectorCmd = &cli.Command{
-	Name:  "pledge-sector",
+var sectorsCmd = &cli.Command{
+	Name:  "sectors",
+	Usage: "interact with sector store",
+	Subcommands: []*cli.Command{
+		sectorsStatusCmd,
+		sectorsListCmd,
+		sectorsRefsCmd,
+		sectorsUpdateCmd,
+		sectorsPledgeCmd,
+	},
+}
+
+var sectorsPledgeCmd = &cli.Command{
+	Name:  "pledge",
 	Usage: "store random data in a sector",
 	Action: func(cctx *cli.Context) error {
 		nodeApi, closer, err := lcli.GetStorageMinerAPI(cctx)
@@ -30,17 +42,6 @@ var pledgeSectorCmd = &cli.Command{
 		ctx := lcli.ReqContext(cctx)
 
 		return nodeApi.PledgeSector(ctx)
-	},
-}
-
-var sectorsCmd = &cli.Command{
-	Name:  "sectors",
-	Usage: "interact with sector store",
-	Subcommands: []*cli.Command{
-		sectorsStatusCmd,
-		sectorsListCmd,
-		sectorsRefsCmd,
-		sectorsUpdateCmd,
 	},
 }
 
@@ -76,7 +77,7 @@ var sectorsStatusCmd = &cli.Command{
 		}
 
 		fmt.Printf("SectorID:\t%d\n", status.SectorID)
-		fmt.Printf("Status:\t%s\n", api.SectorStates[status.State])
+		fmt.Printf("Status:\t%s\n", status.State)
 		fmt.Printf("CommD:\t\t%x\n", status.CommD)
 		fmt.Printf("CommR:\t\t%x\n", status.CommR)
 		fmt.Printf("Ticket:\t\t%x\n", status.Ticket.Value)
@@ -168,7 +169,7 @@ var sectorsListCmd = &cli.Command{
 
 			fmt.Fprintf(w, "%d: %s\tsSet: %s\tpSet: %s\ttktH: %d\tseedH: %d\tdeals: %v\n",
 				s,
-				api.SectorStates[st.State],
+				st.State,
 				yesno(inSSet),
 				yesno(inPSet),
 				st.Ticket.Epoch,
@@ -235,14 +236,7 @@ var sectorsUpdateCmd = &cli.Command{
 			return xerrors.Errorf("could not parse sector ID: %w", err)
 		}
 
-		var st api.SectorState
-		for i, s := range api.SectorStates {
-			if cctx.Args().Get(1) == s {
-				st = api.SectorState(i)
-			}
-		}
-
-		return nodeApi.SectorsUpdate(ctx, abi.SectorNumber(id), st)
+		return nodeApi.SectorsUpdate(ctx, abi.SectorNumber(id), sealing.SectorState(cctx.Args().Get(1)))
 	},
 }
 

@@ -3,14 +3,12 @@ package gen
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"io/ioutil"
 	"sync/atomic"
 
 	"github.com/filecoin-project/go-address"
 	commcid "github.com/filecoin-project/go-fil-commcid"
-	sectorbuilder "github.com/filecoin-project/go-sectorbuilder"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
 	"github.com/filecoin-project/specs-storage/storage"
@@ -23,6 +21,9 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-merkledag"
+	"github.com/minio/blake2b-simd"
+	"go.opencensus.io/trace"
+	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
@@ -36,10 +37,7 @@ import (
 	"github.com/filecoin-project/lotus/genesis"
 	"github.com/filecoin-project/lotus/lib/sigs"
 	"github.com/filecoin-project/lotus/node/repo"
-	"github.com/filecoin-project/lotus/storage/sbmock"
-
-	"go.opencensus.io/trace"
-	"golang.org/x/xerrors"
+	"github.com/filecoin-project/sector-storage/ffiwrapper"
 )
 
 var log = logging.Logger("gen")
@@ -276,8 +274,12 @@ func CarWalkFunc(nd format.Node) (out []*format.Link, err error) {
 func (cg *ChainGen) nextBlockProof(ctx context.Context, pts *types.TipSet, m address.Address, round int64) (*types.EPostProof, *types.Ticket, error) {
 	mc := &mca{w: cg.w, sm: cg.sm}
 
-	// TODO: REVIEW: Am I doing this correctly?
-	ticketRand, err := mc.ChainGetRandomness(ctx, pts.Key(), crypto.DomainSeparationTag_TicketProduction, pts.Height(), m.Bytes())
+	buf := new(bytes.Buffer)
+	if err := m.MarshalCBOR(buf); err != nil {
+		return nil, nil, xerrors.Errorf("failed to cbor marshal address: %w", err)
+	}
+
+	ticketRand, err := mc.ChainGetRandomness(ctx, pts.Key(), crypto.DomainSeparationTag_TicketProduction, abi.ChainEpoch(round-build.EcRandomnessLookback), buf.Bytes())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -416,7 +418,7 @@ func getRandomMessages(cg *ChainGen) ([]*types.SignedMessage, error) {
 
 			Method: 0,
 
-			GasLimit: types.NewInt(10000),
+			GasLimit: 10000,
 			GasPrice: types.NewInt(0),
 		}
 
@@ -444,13 +446,7 @@ func (cg *ChainGen) YieldRepo() (repo.Repo, error) {
 type MiningCheckAPI interface {
 	ChainGetRandomness(ctx context.Context, tsk types.TipSetKey, personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) (abi.Randomness, error)
 
-	StateMinerPower(context.Context, address.Address, types.TipSetKey) (*api.MinerPower, error)
-
-	StateMinerWorker(context.Context, address.Address, types.TipSetKey) (address.Address, error)
-
-	StateMinerSectorSize(context.Context, address.Address, types.TipSetKey) (abi.SectorSize, error)
-
-	StateMinerProvingSet(context.Context, address.Address, types.TipSetKey) ([]*api.ChainSectorInfo, error)
+	MinerGetBaseInfo(context.Context, address.Address, types.TipSetKey) (*api.MiningBaseInfo, error)
 
 	WalletSign(context.Context, address.Address, []byte) (*crypto.Signature, error)
 }
@@ -469,44 +465,8 @@ func (mca mca) ChainGetRandomness(ctx context.Context, tsk types.TipSetKey, pers
 	return mca.sm.ChainStore().GetRandomness(ctx, pts.Cids(), personalization, int64(randEpoch), entropy)
 }
 
-func (mca mca) StateMinerPower(ctx context.Context, maddr address.Address, tsk types.TipSetKey) (*api.MinerPower, error) {
-	ts, err := mca.sm.ChainStore().LoadTipSet(tsk)
-	if err != nil {
-		return nil, xerrors.Errorf("loading tipset %s: %w", tsk, err)
-	}
-	mpow, tpow, err := stmgr.GetPower(ctx, mca.sm, ts, maddr)
-	if err != nil {
-		return nil, err
-	}
-
-	return &api.MinerPower{
-		MinerPower: mpow,
-		TotalPower: tpow,
-	}, err
-}
-
-func (mca mca) StateMinerWorker(ctx context.Context, maddr address.Address, tsk types.TipSetKey) (address.Address, error) {
-	ts, err := mca.sm.ChainStore().LoadTipSet(tsk)
-	if err != nil {
-		return address.Undef, xerrors.Errorf("loading tipset %s: %w", tsk, err)
-	}
-	return stmgr.GetMinerWorkerRaw(ctx, mca.sm, ts.ParentState(), maddr)
-}
-
-func (mca mca) StateMinerSectorSize(ctx context.Context, maddr address.Address, tsk types.TipSetKey) (abi.SectorSize, error) {
-	ts, err := mca.sm.ChainStore().LoadTipSet(tsk)
-	if err != nil {
-		return 0, xerrors.Errorf("loading tipset %s: %w", tsk, err)
-	}
-	return stmgr.GetMinerSectorSize(ctx, mca.sm, ts, maddr)
-}
-
-func (mca mca) StateMinerProvingSet(ctx context.Context, maddr address.Address, tsk types.TipSetKey) ([]*api.ChainSectorInfo, error) {
-	ts, err := mca.sm.ChainStore().LoadTipSet(tsk)
-	if err != nil {
-		return nil, xerrors.Errorf("loading tipset %s: %w", tsk, err)
-	}
-	return stmgr.GetMinerProvingSet(ctx, mca.sm, ts, maddr)
+func (mca mca) MinerGetBaseInfo(ctx context.Context, maddr address.Address, tsk types.TipSetKey) (*api.MiningBaseInfo, error) {
+	return stmgr.MinerGetBaseInfo(ctx, mca.sm, tsk, maddr)
 }
 
 func (mca mca) WalletSign(ctx context.Context, a address.Address, v []byte) (*crypto.Signature, error) {
@@ -549,31 +509,31 @@ type ProofInput struct {
 }
 
 func IsRoundWinner(ctx context.Context, ts *types.TipSet, round int64, miner address.Address, epp ElectionPoStProver, a MiningCheckAPI) (*ProofInput, error) {
-	epostRand, err := a.ChainGetRandomness(ctx, ts.Key(), crypto.DomainSeparationTag_ElectionPoStChallengeSeed, abi.ChainEpoch(round-build.EcRandomnessLookback), miner.Bytes())
+	buf := new(bytes.Buffer)
+	if err := miner.MarshalCBOR(buf); err != nil {
+		return nil, xerrors.Errorf("failed to cbor marshal address: %w")
+	}
+	epostRand, err := a.ChainGetRandomness(ctx, ts.Key(), crypto.DomainSeparationTag_ElectionPoStChallengeSeed, abi.ChainEpoch(round-build.EcRandomnessLookback), buf.Bytes())
 	if err != nil {
 		return nil, xerrors.Errorf("chain get randomness: %w", err)
 	}
 
-	mworker, err := a.StateMinerWorker(ctx, miner, ts.Key())
+	mbi, err := a.MinerGetBaseInfo(ctx, miner, ts.Key())
 	if err != nil {
-		return nil, xerrors.Errorf("failed to get miner worker: %w", err)
+		return nil, xerrors.Errorf("failed to get mining base info: %w", err)
 	}
 
-	vrfout, err := ComputeVRF(ctx, a.WalletSign, mworker, epostRand)
+	vrfout, err := ComputeVRF(ctx, a.WalletSign, mbi.Worker, epostRand)
 	if err != nil {
 		return nil, xerrors.Errorf("failed to compute VRF: %w", err)
 	}
 
-	pset, err := a.StateMinerProvingSet(ctx, miner, ts.Key())
-	if err != nil {
-		return nil, xerrors.Errorf("failed to load proving set for miner: %w", err)
-	}
-	if len(pset) == 0 {
+	if len(mbi.Sectors) == 0 {
 		return nil, nil
 	}
 
 	var sinfos []abi.SectorInfo
-	for _, s := range pset {
+	for _, s := range mbi.Sectors {
 		if s.Info.Info.RegisteredProof == 0 {
 			return nil, xerrors.Errorf("sector %d in proving set had registered type of zero", s.ID)
 		}
@@ -584,25 +544,15 @@ func IsRoundWinner(ctx context.Context, ts *types.TipSet, round int64, miner add
 		})
 	}
 
-	hvrf := sha256.Sum256(vrfout)
+	hvrf := blake2b.Sum256(vrfout)
 	candidates, err := epp.GenerateCandidates(ctx, sinfos, hvrf[:])
 	if err != nil {
 		return nil, xerrors.Errorf("failed to generate electionPoSt candidates: %w", err)
 	}
 
-	pow, err := a.StateMinerPower(ctx, miner, ts.Key())
-	if err != nil {
-		return nil, xerrors.Errorf("failed to check power: %w", err)
-	}
-
-	ssize, err := a.StateMinerSectorSize(ctx, miner, ts.Key())
-	if err != nil {
-		return nil, xerrors.Errorf("failed to look up miners sector size: %w", err)
-	}
-
 	var winners []storage.PoStCandidateWithTicket
 	for _, c := range candidates {
-		if types.IsTicketWinner(c.Candidate.PartialTicket, ssize, uint64(len(sinfos)), pow.TotalPower) {
+		if types.IsTicketWinner(c.Candidate.PartialTicket, mbi.SectorSize, uint64(len(sinfos)), mbi.NetworkPower) {
 			winners = append(winners, c)
 		}
 	}
@@ -676,13 +626,10 @@ func ComputeVRF(ctx context.Context, sign SignFunc, worker address.Address, sigI
 
 type genFakeVerifier struct{}
 
-var _ sectorbuilder.Verifier = (*genFakeVerifier)(nil)
+var _ ffiwrapper.Verifier = (*genFakeVerifier)(nil)
 
 func (m genFakeVerifier) VerifyElectionPost(ctx context.Context, pvi abi.PoStVerifyInfo) (bool, error) {
 	panic("nyi")
-}
-func (m genFakeVerifier) GenerateDataCommitment(ssize abi.PaddedPieceSize, pieces []abi.PieceInfo) (cid.Cid, error) {
-	return sbmock.MockVerifier.GenerateDataCommitment(ssize, pieces)
 }
 
 func (m genFakeVerifier) VerifySeal(svi abi.SealVerifyInfo) (bool, error) {

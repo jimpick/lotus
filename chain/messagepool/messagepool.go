@@ -25,7 +25,6 @@ import (
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/stmgr"
-	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/lib/sigs"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
@@ -34,6 +33,13 @@ import (
 var log = logging.Logger("messagepool")
 
 const futureDebug = false
+
+const ReplaceByFeeRatio = 1.25
+
+var (
+	rbfNum   = types.NewInt(uint64((ReplaceByFeeRatio - 1) * 256))
+	rbfDenom = types.NewInt(256)
+)
 
 var (
 	ErrMessageTooBig = errors.New("message too big")
@@ -45,6 +51,8 @@ var (
 	ErrNotEnoughFunds = errors.New("not enough funds to execute transaction")
 
 	ErrInvalidToAddr = errors.New("message had invalid to address")
+
+	ErrBroadcastAnyway = errors.New("broadcasting message despite validation fail")
 )
 
 const (
@@ -77,6 +85,8 @@ type MessagePool struct {
 	changes *lps.PubSub
 
 	localMsgs datastore.Datastore
+
+	netName dtypes.NetworkName
 }
 
 type msgSet struct {
@@ -94,10 +104,20 @@ func (ms *msgSet) add(m *types.SignedMessage) error {
 	if len(ms.msgs) == 0 || m.Message.Nonce >= ms.nextNonce {
 		ms.nextNonce = m.Message.Nonce + 1
 	}
-	if _, has := ms.msgs[m.Message.Nonce]; has {
-		if m.Cid() != ms.msgs[m.Message.Nonce].Cid() {
-			log.Info("add with duplicate nonce")
-			return xerrors.Errorf("message to %s with nonce %d already in mpool", m.Message.To, m.Message.Nonce)
+	exms, has := ms.msgs[m.Message.Nonce]
+	if has {
+		if m.Cid() != exms.Cid() {
+			// check if RBF passes
+			minPrice := exms.Message.GasPrice
+			minPrice = types.BigAdd(minPrice, types.BigDiv(types.BigMul(minPrice, rbfNum), rbfDenom))
+			minPrice = types.BigAdd(minPrice, types.NewInt(1))
+			if types.BigCmp(m.Message.GasPrice, minPrice) > 0 {
+				log.Infow("add with RBF", "oldprice", exms.Message.GasPrice,
+					"newprice", m.Message.GasPrice, "addr", m.Message.From, "nonce", m.Message.Nonce)
+			} else {
+				log.Info("add with duplicate nonce")
+				return xerrors.Errorf("message to %s with nonce %d already in mpool", m.Message.To, m.Message.Nonce)
+			}
 		}
 	}
 	ms.msgs[m.Message.Nonce] = m
@@ -107,11 +127,11 @@ func (ms *msgSet) add(m *types.SignedMessage) error {
 
 type Provider interface {
 	SubscribeHeadChanges(func(rev, app []*types.TipSet) error) *types.TipSet
-	PutMessage(m store.ChainMsg) (cid.Cid, error)
+	PutMessage(m types.ChainMsg) (cid.Cid, error)
 	PubSubPublish(string, []byte) error
 	StateGetActor(address.Address, *types.TipSet) (*types.Actor, error)
 	MessagesForBlock(*types.BlockHeader) ([]*types.Message, []*types.SignedMessage, error)
-	MessagesForTipset(*types.TipSet) ([]store.ChainMsg, error)
+	MessagesForTipset(*types.TipSet) ([]types.ChainMsg, error)
 	LoadTipSet(tsk types.TipSetKey) (*types.TipSet, error)
 }
 
@@ -129,7 +149,7 @@ func (mpp *mpoolProvider) SubscribeHeadChanges(cb func(rev, app []*types.TipSet)
 	return mpp.sm.ChainStore().GetHeaviestTipSet()
 }
 
-func (mpp *mpoolProvider) PutMessage(m store.ChainMsg) (cid.Cid, error) {
+func (mpp *mpoolProvider) PutMessage(m types.ChainMsg) (cid.Cid, error) {
 	return mpp.sm.ChainStore().PutMessage(m)
 }
 
@@ -145,7 +165,7 @@ func (mpp *mpoolProvider) MessagesForBlock(h *types.BlockHeader) ([]*types.Messa
 	return mpp.sm.ChainStore().MessagesForBlock(h)
 }
 
-func (mpp *mpoolProvider) MessagesForTipset(ts *types.TipSet) ([]store.ChainMsg, error) {
+func (mpp *mpoolProvider) MessagesForTipset(ts *types.TipSet) ([]types.ChainMsg, error) {
 	return mpp.sm.ChainStore().MessagesForTipset(ts)
 }
 
@@ -153,7 +173,7 @@ func (mpp *mpoolProvider) LoadTipSet(tsk types.TipSetKey) (*types.TipSet, error)
 	return mpp.sm.ChainStore().LoadTipSet(tsk)
 }
 
-func New(api Provider, ds dtypes.MetadataDS) (*MessagePool, error) {
+func New(api Provider, ds dtypes.MetadataDS, netName dtypes.NetworkName) (*MessagePool, error) {
 	cache, _ := lru.New2Q(build.BlsSignatureCacheSize)
 	mp := &MessagePool{
 		closer:        make(chan struct{}),
@@ -166,6 +186,7 @@ func New(api Provider, ds dtypes.MetadataDS) (*MessagePool, error) {
 		changes:       lps.New(50),
 		localMsgs:     namespace.Wrap(ds, datastore.NewKey(localMsgsDs)),
 		api:           api,
+		netName:       netName,
 	}
 
 	if err := mp.loadLocal(); err != nil {
@@ -238,7 +259,7 @@ func (mp *MessagePool) repubLocal() {
 					continue
 				}
 
-				err = mp.api.PubSubPublish(build.MessagesTopic, msgb)
+				err = mp.api.PubSubPublish(build.MessagesTopic(mp.netName), msgb)
 				if err != nil {
 					errout = multierr.Append(errout, xerrors.Errorf("could not publish: %w", err))
 					continue
@@ -283,7 +304,7 @@ func (mp *MessagePool) Push(m *types.SignedMessage) (cid.Cid, error) {
 	}
 	mp.lk.Unlock()
 
-	return m.Cid(), mp.api.PubSubPublish(build.MessagesTopic, msgb)
+	return m.Cid(), mp.api.PubSubPublish(build.MessagesTopic(mp.netName), msgb)
 }
 
 func (mp *MessagePool) Add(m *types.SignedMessage) error {
@@ -313,7 +334,7 @@ func (mp *MessagePool) addTs(m *types.SignedMessage, curTs *types.TipSet) error 
 
 	snonce, err := mp.getStateNonce(m.Message.From, curTs)
 	if err != nil {
-		return xerrors.Errorf("failed to look up actor state nonce: %w", err)
+		return xerrors.Errorf("failed to look up actor state nonce: %s: %w", err, ErrBroadcastAnyway)
 	}
 
 	if snonce > m.Message.Nonce {
@@ -322,7 +343,7 @@ func (mp *MessagePool) addTs(m *types.SignedMessage, curTs *types.TipSet) error 
 
 	balance, err := mp.getStateBalance(m.Message.From, curTs)
 	if err != nil {
-		return xerrors.Errorf("failed to check sender balance: %w", err)
+		return xerrors.Errorf("failed to check sender balance: %s: %w", err, ErrBroadcastAnyway)
 	}
 
 	if balance.LessThan(m.Message.RequiredFunds()) {
@@ -461,7 +482,7 @@ func (mp *MessagePool) PushWithNonce(addr address.Address, cb func(uint64) (*typ
 
 	nonce, err := mp.getNonceLocked(addr, mp.curTs)
 	if err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("get nonce locked failed: %w", err)
 	}
 
 	msg, err := cb(nonce)
@@ -475,13 +496,13 @@ func (mp *MessagePool) PushWithNonce(addr address.Address, cb func(uint64) (*typ
 	}
 
 	if err := mp.addLocked(msg); err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("add locked failed: %w", err)
 	}
 	if err := mp.addLocal(msg, msgb); err != nil {
 		log.Errorf("addLocal failed: %+v", err)
 	}
 
-	return msg, mp.api.PubSubPublish(build.MessagesTopic, msgb)
+	return msg, mp.api.PubSubPublish(build.MessagesTopic(mp.netName), msgb)
 }
 
 func (mp *MessagePool) Remove(from address.Address, nonce uint64) {

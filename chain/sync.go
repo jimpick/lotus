@@ -1,22 +1,15 @@
 package chain
 
 import (
+	"bytes"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/filecoin-project/specs-actors/actors/abi"
-	"github.com/filecoin-project/specs-actors/actors/builtin"
-
 	"github.com/Gurpartap/async"
-	amt "github.com/filecoin-project/go-amt-ipld/v2"
-	sectorbuilder "github.com/filecoin-project/go-sectorbuilder"
-	"github.com/filecoin-project/specs-actors/actors/builtin/power"
-	"github.com/filecoin-project/specs-actors/actors/crypto"
-	"github.com/filecoin-project/specs-actors/actors/util/adt"
 	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/go-cid"
 	dstore "github.com/ipfs/go-datastore"
@@ -25,6 +18,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/connmgr"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/minio/blake2b-simd"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	"github.com/whyrusleeping/pubsub"
 	"go.opencensus.io/stats"
@@ -32,8 +26,13 @@ import (
 	"golang.org/x/xerrors"
 
 	bls "github.com/filecoin-project/filecoin-ffi"
-
 	"github.com/filecoin-project/go-address"
+	amt "github.com/filecoin-project/go-amt-ipld/v2"
+	"github.com/filecoin-project/specs-actors/actors/abi"
+	"github.com/filecoin-project/specs-actors/actors/builtin"
+	"github.com/filecoin-project/specs-actors/actors/builtin/power"
+	"github.com/filecoin-project/specs-actors/actors/crypto"
+	"github.com/filecoin-project/specs-actors/actors/util/adt"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
@@ -45,6 +44,7 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/lib/sigs"
 	"github.com/filecoin-project/lotus/metrics"
+	"github.com/filecoin-project/sector-storage/ffiwrapper"
 )
 
 var log = logging.Logger("chain")
@@ -321,7 +321,7 @@ func zipTipSetAndMessages(bs cbor.IpldStore, ts *types.TipSet, allbmsgs []*types
 		}
 
 		if b.Messages != mrcid {
-			return nil, fmt.Errorf("messages didnt match message root in header")
+			return nil, fmt.Errorf("messages didnt match message root in header for ts %s", ts.Key())
 		}
 
 		fb := &types.FullBlock{
@@ -511,10 +511,11 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) err
 		return xerrors.Errorf("block had nil signature")
 	}
 
-	if h.Timestamp > uint64(time.Now().Unix()+build.AllowableClockDrift) {
-		return xerrors.Errorf("block was from the future: %w", ErrTemporal)
+	now := uint64(time.Now().Unix())
+	if h.Timestamp > now+build.AllowableClockDrift {
+		return xerrors.Errorf("block was from the future (now=%d, blk=%d): %w", now, h.Timestamp, ErrTemporal)
 	}
-	if h.Timestamp > uint64(time.Now().Unix()) {
+	if h.Timestamp > now {
 		log.Warn("Got block from the future, but within threshold", h.Timestamp, time.Now().Unix())
 	}
 
@@ -617,7 +618,11 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) err
 	})
 
 	tktsCheck := async.Err(func() error {
-		vrfBase, err := syncer.sm.ChainStore().GetRandomness(ctx, baseTs.Cids(), crypto.DomainSeparationTag_TicketProduction, int64(baseTs.Height()), h.Miner.Bytes())
+		buf := new(bytes.Buffer)
+		if err := h.Miner.MarshalCBOR(buf); err != nil {
+			return xerrors.Errorf("failed to marshal miner address to cbor: %w", err)
+		}
+		vrfBase, err := syncer.sm.ChainStore().GetRandomness(ctx, baseTs.Cids(), crypto.DomainSeparationTag_TicketProduction, int64(h.Height)-1, buf.Bytes())
 		if err != nil {
 			return xerrors.Errorf("failed to get randomness for verifying election proof: %w", err)
 		}
@@ -630,7 +635,7 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) err
 	})
 
 	eproofCheck := async.Err(func() error {
-		if err := syncer.VerifyElectionPoStProof(ctx, h, baseTs, waddr); err != nil {
+		if err := syncer.VerifyElectionPoStProof(ctx, h, waddr); err != nil {
 			return xerrors.Errorf("invalid election post: %w", err)
 		}
 		return nil
@@ -651,12 +656,38 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) err
 			merr = multierror.Append(merr, err)
 		}
 	}
+	if merr != nil {
+		mulErr := merr.(*multierror.Error)
+		mulErr.ErrorFormat = func(es []error) string {
+			if len(es) == 1 {
+				return fmt.Sprintf("1 error occurred:\n\t* %+v\n\n", es[0])
+			}
+
+			points := make([]string, len(es))
+			for i, err := range es {
+				points[i] = fmt.Sprintf("* %+v", err)
+			}
+
+			return fmt.Sprintf(
+				"%d errors occurred:\n\t%s\n\n",
+				len(es), strings.Join(points, "\n\t"))
+		}
+	}
 
 	return merr
 }
 
-func (syncer *Syncer) VerifyElectionPoStProof(ctx context.Context, h *types.BlockHeader, baseTs *types.TipSet, waddr address.Address) error {
-	rand, err := syncer.sm.ChainStore().GetRandomness(ctx, baseTs.Cids(), crypto.DomainSeparationTag_ElectionPoStChallengeSeed, int64(h.Height-build.EcRandomnessLookback), h.Miner.Bytes())
+func (syncer *Syncer) VerifyElectionPoStProof(ctx context.Context, h *types.BlockHeader, waddr address.Address) error {
+	curTs, err := types.NewTipSet([]*types.BlockHeader{h})
+	if err != nil {
+		return err
+	}
+
+	buf := new(bytes.Buffer)
+	if err := h.Miner.MarshalCBOR(buf); err != nil {
+		return xerrors.Errorf("failed to marshal miner to cbor: %w", err)
+	}
+	rand, err := syncer.sm.ChainStore().GetRandomness(ctx, curTs.Cids(), crypto.DomainSeparationTag_ElectionPoStChallengeSeed, int64(h.Height-build.EcRandomnessLookback), buf.Bytes())
 	if err != nil {
 		return xerrors.Errorf("failed to get randomness for verifying election proof: %w", err)
 	}
@@ -665,7 +696,7 @@ func (syncer *Syncer) VerifyElectionPoStProof(ctx context.Context, h *types.Bloc
 		return xerrors.Errorf("checking eproof failed: %w", err)
 	}
 
-	ssize, err := stmgr.GetMinerSectorSize(ctx, syncer.sm, baseTs, h.Miner)
+	ssize, err := stmgr.GetMinerSectorSize(ctx, syncer.sm, curTs, h.Miner)
 	if err != nil {
 		return xerrors.Errorf("failed to get sector size for miner: %w", err)
 	}
@@ -691,7 +722,7 @@ func (syncer *Syncer) VerifyElectionPoStProof(ctx context.Context, h *types.Bloc
 		return xerrors.Errorf("no candidates")
 	}
 
-	sectorInfo, err := stmgr.GetSectorsForElectionPost(ctx, syncer.sm, baseTs, h.Miner)
+	sectorInfo, err := stmgr.GetSectorsForElectionPost(ctx, syncer.sm, curTs, h.Miner)
 	if err != nil {
 		return xerrors.Errorf("getting election post sector set: %w", err)
 	}
@@ -707,7 +738,7 @@ func (syncer *Syncer) VerifyElectionPoStProof(ctx context.Context, h *types.Bloc
 		return xerrors.Errorf("[TESTING] election post was invalid")
 	}
 
-	rt, _, err := api.ProofTypeFromSectorSize(ssize)
+	rt, _, err := ffiwrapper.ProofTypeFromSectorSize(ssize)
 	if err != nil {
 		return err
 	}
@@ -723,9 +754,9 @@ func (syncer *Syncer) VerifyElectionPoStProof(ctx context.Context, h *types.Bloc
 	}
 
 	// TODO: why do we need this here?
-	challengeCount := sectorbuilder.ElectionPostChallengeCount(uint64(len(sectorInfo)), 0)
+	challengeCount := ffiwrapper.ElectionPostChallengeCount(uint64(len(sectorInfo)), 0)
 
-	hvrf := sha256.Sum256(h.EPostProof.PostRand)
+	hvrf := blake2b.Sum256(h.EPostProof.PostRand)
 	pvi := abi.PoStVerifyInfo{
 		Randomness:      hvrf[:],
 		Candidates:      candidates,
@@ -735,7 +766,7 @@ func (syncer *Syncer) VerifyElectionPoStProof(ctx context.Context, h *types.Bloc
 		ChallengeCount:  challengeCount,
 	}
 
-	ok, err := sectorbuilder.ProofVerifier.VerifyElectionPost(ctx, pvi)
+	ok, err := ffiwrapper.ProofVerifier.VerifyElectionPost(ctx, pvi)
 	if err != nil {
 		return xerrors.Errorf("failed to verify election post: %w", err)
 	}
@@ -770,7 +801,6 @@ func (syncer *Syncer) checkBlockMessages(ctx context.Context, b *types.FullBlock
 	}
 
 	nonces := make(map[address.Address]uint64)
-	balances := make(map[address.Address]types.BigInt)
 
 	stateroot, _, err := syncer.sm.TipSetState(ctx, baseTs)
 	if err != nil {
@@ -789,12 +819,12 @@ func (syncer *Syncer) checkBlockMessages(ctx context.Context, b *types.FullBlock
 		}
 
 		if _, ok := nonces[m.From]; !ok {
+			// `GetActor` does not validate that this is an account actor.
 			act, err := st.GetActor(m.From)
 			if err != nil {
 				return xerrors.Errorf("failed to get actor: %w", err)
 			}
 			nonces[m.From] = act.Nonce
-			balances[m.From] = act.Balance
 		}
 
 		if nonces[m.From] != m.Nonce {
@@ -802,11 +832,6 @@ func (syncer *Syncer) checkBlockMessages(ctx context.Context, b *types.FullBlock
 		}
 		nonces[m.From]++
 
-		if balances[m.From].LessThan(m.RequiredFunds()) {
-			return xerrors.Errorf("not enough funds for message execution")
-		}
-
-		balances[m.From] = types.BigSub(balances[m.From], m.RequiredFunds())
 		return nil
 	}
 
@@ -827,6 +852,8 @@ func (syncer *Syncer) checkBlockMessages(ctx context.Context, b *types.FullBlock
 			return xerrors.Errorf("block had invalid secpk message at index %d: %w", i, err)
 		}
 
+		// `From` being an account actor is only validated inside the `vm.ResolveToKeyAddr` call
+		// in `StateManager.ResolveToKeyAddress` here (and not in `checkMsg`).
 		kaddr, err := syncer.sm.ResolveToKeyAddress(ctx, m.Message.From, baseTs)
 		if err != nil {
 			return xerrors.Errorf("failed to resolve key addr: %w", err)
@@ -865,7 +892,7 @@ func (syncer *Syncer) checkBlockMessages(ctx context.Context, b *types.FullBlock
 	return nil
 }
 
-func (syncer *Syncer) verifyBlsAggregate(ctx context.Context, sig crypto.Signature, msgs []cid.Cid, pubks []bls.PublicKey) error {
+func (syncer *Syncer) verifyBlsAggregate(ctx context.Context, sig *crypto.Signature, msgs []cid.Cid, pubks []bls.PublicKey) error {
 	_, span := trace.StartSpan(ctx, "syncer.verifyBlsAggregate")
 	defer span.End()
 	span.AddAttributes(
@@ -1111,25 +1138,35 @@ func (syncer *Syncer) iterFullTipsets(ctx context.Context, headers []*types.TipS
 			batchSize = i
 		}
 
-		next := headers[i-batchSize]
-		bstips, err := syncer.Bsync.GetChainMessages(ctx, next, uint64(batchSize+1))
-		if err != nil {
-			return xerrors.Errorf("message processing failed: %w", err)
+		nextI := (i + 1) - batchSize // want to fetch batchSize values, 'i' points to last one we want to fetch, so its 'inclusive' of our request, thus we need to add one to our request start index
+
+		var bstout []*blocksync.BSTipSet
+		for len(bstout) < batchSize {
+			next := headers[nextI]
+
+			nreq := batchSize - len(bstout)
+			bstips, err := syncer.Bsync.GetChainMessages(ctx, next, uint64(nreq))
+			if err != nil {
+				return xerrors.Errorf("message processing failed: %w", err)
+			}
+
+			bstout = append(bstout, bstips...)
+			nextI += len(bstips)
 		}
 
-		for bsi := 0; bsi < len(bstips); bsi++ {
+		for bsi := 0; bsi < len(bstout); bsi++ {
 			// temp storage so we don't persist data we dont want to
 			ds := dstore.NewMapDatastore()
 			bs := bstore.NewBlockstore(ds)
 			blks := cbor.NewCborStore(bs)
 
 			this := headers[i-bsi]
-			bstip := bstips[len(bstips)-(bsi+1)]
+			bstip := bstout[len(bstout)-(bsi+1)]
 			fts, err := zipTipSetAndMessages(blks, this, bstip.BlsMessages, bstip.SecpkMessages, bstip.BlsMsgIncludes, bstip.SecpkMsgIncludes)
 			if err != nil {
 				log.Warnw("zipping failed", "error", err, "bsi", bsi, "i", i,
 					"height", this.Height(), "bstip-height", bstip.Blocks[0].Height,
-					"bstips", bstips, "next-height", i+batchSize)
+					"next-height", i+batchSize)
 				return xerrors.Errorf("message processing failed: %w", err)
 			}
 
@@ -1145,7 +1182,7 @@ func (syncer *Syncer) iterFullTipsets(ctx context.Context, headers []*types.TipS
 				return xerrors.Errorf("message processing failed: %w", err)
 			}
 		}
-		i -= windowSize
+		i -= batchSize
 	}
 
 	return nil

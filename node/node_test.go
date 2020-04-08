@@ -9,6 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/filecoin-project/lotus/lib/lotuslog"
+	"github.com/filecoin-project/lotus/storage/mockstorage"
+	"github.com/filecoin-project/sector-storage/ffiwrapper"
+
 	"github.com/filecoin-project/go-fil-markets/storedcounter"
 	"github.com/ipfs/go-datastore"
 	logging "github.com/ipfs/go-log/v2"
@@ -18,7 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/filecoin-project/go-address"
-	sectorbuilder "github.com/filecoin-project/go-sectorbuilder"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/abi/big"
 	"github.com/filecoin-project/specs-actors/actors/builtin"
@@ -41,9 +44,8 @@ import (
 	"github.com/filecoin-project/lotus/node/modules"
 	modtest "github.com/filecoin-project/lotus/node/modules/testing"
 	"github.com/filecoin-project/lotus/node/repo"
-	"github.com/filecoin-project/lotus/storage/sbmock"
-	"github.com/filecoin-project/lotus/storage/sealmgr"
-	"github.com/filecoin-project/lotus/storage/sealmgr/advmgr"
+	sectorstorage "github.com/filecoin-project/sector-storage"
+	"github.com/filecoin-project/sector-storage/mock"
 )
 
 func init() {
@@ -80,6 +82,7 @@ func testStorageNode(ctx context.Context, t *testing.T, waddr address.Address, a
 	for i := 0; i < nPreseal; i++ {
 		nic.Next()
 	}
+	nic.Next()
 
 	err = lr.Close()
 	require.NoError(t, err)
@@ -97,7 +100,7 @@ func testStorageNode(ctx context.Context, t *testing.T, waddr address.Address, a
 		Params:   enc,
 		Value:    types.NewInt(0),
 		GasPrice: types.NewInt(0),
-		GasLimit: types.NewInt(1000000),
+		GasLimit: 1000000,
 	}
 
 	_, err = tnd.MpoolPushMessage(ctx, msg)
@@ -256,7 +259,7 @@ func builder(t *testing.T, nFull int, storage []int) ([]test.TestNode, []test.Te
 
 		storers[i] = testStorageNode(ctx, t, wa, genMiner, pk, f, mn, node.Options())
 		if err := storers[i].StorageAddLocal(ctx, presealDirs[i]); err != nil {
-			t.Fatal(err)
+			t.Fatalf("%+v", err)
 		}
 		/*
 			sma := storers[i].StorageMiner.(*impl.StorageMinerAPI)
@@ -309,7 +312,7 @@ func mockSbBuilder(t *testing.T, nFull int, storage []int) ([]test.TestNode, []t
 		if err != nil {
 			t.Fatal(err)
 		}
-		genm, k, err := sbmock.PreSeal(2048, maddr, nPreseal)
+		genm, k, err := mockstorage.PreSeal(2048, maddr, nPreseal)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -355,7 +358,7 @@ func mockSbBuilder(t *testing.T, nFull int, storage []int) ([]test.TestNode, []t
 			node.MockHost(mn),
 			node.Test(),
 
-			node.Override(new(sectorbuilder.Verifier), sbmock.MockVerifier),
+			node.Override(new(ffiwrapper.Verifier), mock.MockVerifier),
 
 			genesis,
 		)
@@ -385,10 +388,11 @@ func mockSbBuilder(t *testing.T, nFull int, storage []int) ([]test.TestNode, []t
 		wa := genms[i].Worker
 
 		storers[i] = testStorageNode(ctx, t, wa, genMiner, pk, f, mn, node.Options(
-			node.Override(new(sealmgr.Manager), func() (sealmgr.Manager, error) {
-				return sealmgr.NewSimpleManager(storedcounter.New(datastore.NewMapDatastore(), datastore.NewKey("/potato")), genMiner, sbmock.NewMockSectorBuilder(5, build.SectorSizes[0]))
+			node.Override(new(sectorstorage.SectorManager), func() (sectorstorage.SectorManager, error) {
+				return mock.NewMockSectorMgr(5, build.SectorSizes[0]), nil
 			}),
-			node.Unset(new(*advmgr.Manager)),
+			node.Override(new(ffiwrapper.Verifier), mock.MockVerifier),
+			node.Unset(new(*sectorstorage.Manager)),
 		))
 	}
 
@@ -447,18 +451,23 @@ func TestAPIDealFlow(t *testing.T) {
 	logging.SetLogLevel("sub", "ERROR")
 	logging.SetLogLevel("storageminer", "ERROR")
 
-	test.TestDealFlow(t, mockSbBuilder, 10*time.Millisecond)
+	test.TestDealFlow(t, mockSbBuilder, 10*time.Millisecond, false)
+
+	t.Run("WithExportedCAR", func(t *testing.T) {
+		test.TestDealFlow(t, mockSbBuilder, 10*time.Millisecond, true)
+	})
 }
 
 func TestAPIDealFlowReal(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
+	lotuslog.SetupLogLevels()
 	logging.SetLogLevel("miner", "ERROR")
 	logging.SetLogLevel("chainstore", "ERROR")
 	logging.SetLogLevel("chain", "ERROR")
 	logging.SetLogLevel("sub", "ERROR")
 	logging.SetLogLevel("storageminer", "ERROR")
 
-	test.TestDealFlow(t, builder, time.Second)
+	test.TestDealFlow(t, builder, time.Second, false)
 }

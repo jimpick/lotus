@@ -4,7 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/filecoin-project/lotus/chain/vm"
+	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-filestore"
+	"github.com/libp2p/go-libp2p-core/peer"
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/storagemarket"
@@ -15,13 +17,11 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/builtin/paych"
 	"github.com/filecoin-project/specs-actors/actors/builtin/reward"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
-	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-filestore"
-	"github.com/libp2p/go-libp2p-core/peer"
-	xerrors "golang.org/x/xerrors"
 
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/filecoin-project/lotus/chain/vm"
+	"github.com/filecoin-project/lotus/node/modules/dtypes"
 )
 
 // FullNode API is a low-level interface to the Filecoin network full node
@@ -72,6 +72,7 @@ type FullNode interface {
 
 	// miner
 
+	MinerGetBaseInfo(context.Context, address.Address, types.TipSetKey) (*MiningBaseInfo, error)
 	MinerCreateBlock(context.Context, address.Address, types.TipSetKey, *types.Ticket, *types.EPostProof, []*types.SignedMessage, abi.ChainEpoch, uint64) (*types.BlockMsg, error)
 
 	// // UX ?
@@ -117,6 +118,7 @@ type FullNode interface {
 	StateReadState(ctx context.Context, act *types.Actor, tsk types.TipSetKey) (*ActorState, error)
 	StateListMessages(ctx context.Context, match *types.Message, tsk types.TipSetKey, toht abi.ChainEpoch) ([]cid.Cid, error)
 
+	StateNetworkName(context.Context) (dtypes.NetworkName, error)
 	StateMinerSectors(context.Context, address.Address, types.TipSetKey) ([]*ChainSectorInfo, error)
 	StateMinerProvingSet(context.Context, address.Address, types.TipSetKey) ([]*ChainSectorInfo, error)
 	StateMinerPower(context.Context, address.Address, types.TipSetKey) (*MinerPower, error)
@@ -125,8 +127,10 @@ type FullNode interface {
 	StateMinerPostState(ctx context.Context, actor address.Address, tsk types.TipSetKey) (*miner.PoStState, error)
 	StateMinerSectorSize(context.Context, address.Address, types.TipSetKey) (abi.SectorSize, error)
 	StateMinerFaults(context.Context, address.Address, types.TipSetKey) ([]abi.SectorNumber, error)
+	StateSectorPreCommitInfo(context.Context, address.Address, abi.SectorNumber, types.TipSetKey) (miner.SectorPreCommitOnChainInfo, error)
 	StatePledgeCollateral(context.Context, types.TipSetKey) (types.BigInt, error)
-	StateWaitMsg(context.Context, cid.Cid) (*MsgWait, error)
+	StateWaitMsg(context.Context, cid.Cid) (*MsgLookup, error)
+	StateSearchMsg(context.Context, cid.Cid) (*MsgLookup, error)
 	StateListMiners(context.Context, types.TipSetKey) ([]address.Address, error)
 	StateListActors(context.Context, types.TipSetKey) ([]address.Address, error)
 	StateMarketBalance(context.Context, address.Address, types.TipSetKey) (MarketBalance, error)
@@ -179,16 +183,19 @@ type Import struct {
 type DealInfo struct {
 	ProposalCid cid.Cid
 	State       storagemarket.StorageDealStatus
+	Message     string // more information about deal state, particularly errors
 	Provider    address.Address
 
-	PieceRef []byte // cid bytes
+	PieceCID cid.Cid
 	Size     uint64
 
 	PricePerEpoch types.BigInt
 	Duration      uint64
+
+	DealID abi.DealID
 }
 
-type MsgWait struct {
+type MsgLookup struct {
 	Receipt types.MessageReceipt
 	TipSet  *types.TipSet
 }
@@ -308,6 +315,7 @@ type InvocResult struct {
 	MsgRct             *types.MessageReceipt
 	InternalExecutions []*vm.ExecutionResult
 	Error              string
+	Duration           time.Duration
 }
 
 type MethodCall struct {
@@ -372,17 +380,10 @@ type ComputeStateOutput struct {
 	Trace []*InvocResult
 }
 
-func ProofTypeFromSectorSize(ssize abi.SectorSize) (abi.RegisteredProof, abi.RegisteredProof, error) {
-	switch ssize {
-	case 2 << 10:
-		return abi.RegisteredProof_StackedDRG2KiBPoSt, abi.RegisteredProof_StackedDRG2KiBSeal, nil
-	case 8 << 20:
-		return abi.RegisteredProof_StackedDRG8MiBPoSt, abi.RegisteredProof_StackedDRG8MiBSeal, nil
-	case 512 << 20:
-		return abi.RegisteredProof_StackedDRG512MiBPoSt, abi.RegisteredProof_StackedDRG512MiBSeal, nil
-	case 32 << 30:
-		return abi.RegisteredProof_StackedDRG32GiBPoSt, abi.RegisteredProof_StackedDRG32GiBSeal, nil
-	default:
-		return 0, 0, xerrors.Errorf("unsupported sector size for miner: %v", ssize)
-	}
+type MiningBaseInfo struct {
+	MinerPower   types.BigInt
+	NetworkPower types.BigInt
+	Sectors      []*ChainSectorInfo
+	Worker       address.Address
+	SectorSize   abi.SectorSize
 }

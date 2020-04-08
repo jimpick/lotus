@@ -20,11 +20,11 @@ import (
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	ipld "github.com/ipfs/go-ipld-format"
+	logging "github.com/ipfs/go-log"
 	"github.com/ipfs/go-merkledag"
 	"github.com/ipfs/go-path"
 	"github.com/ipfs/go-path/resolver"
 	mh "github.com/multiformats/go-multihash"
-	"github.com/prometheus/common/log"
 	"go.uber.org/fx"
 	"golang.org/x/xerrors"
 
@@ -34,6 +34,8 @@ import (
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 )
+
+var log = logging.Logger("fullnode")
 
 type ChainAPI struct {
 	fx.In
@@ -283,6 +285,17 @@ func resolveOnce(bs blockstore.Blockstore) func(ctx context.Context, ds ipld.Nod
 			names[0] = "@H:" + ik.Key()
 		}
 
+		if strings.HasPrefix(names[0], "@Hu:") {
+			i, err := strconv.ParseUint(names[0][4:], 10, 64)
+			if err != nil {
+				return nil, nil, xerrors.Errorf("parsing int64: %w", err)
+			}
+
+			ik := adt.UIntKey(i)
+
+			names[0] = "@H:" + ik.Key()
+		}
+
 		if strings.HasPrefix(names[0], "@H:") {
 			cst := cbor.NewCborStore(bs)
 
@@ -424,7 +437,7 @@ func (a *ChainAPI) ChainExport(ctx context.Context, tsk types.TipSetKey) (<-chan
 		for {
 			buf := make([]byte, 4096)
 			n, err := r.Read(buf)
-			if err != nil {
+			if err != nil && err != io.EOF {
 				log.Errorf("chain export pipe read failed: %s", err)
 				return
 			}
@@ -432,6 +445,9 @@ func (a *ChainAPI) ChainExport(ctx context.Context, tsk types.TipSetKey) (<-chan
 			case out <- buf[:n]:
 			case <-ctx.Done():
 				log.Warnf("export writer failed: %s", ctx.Err())
+			}
+			if err == io.EOF {
+				return
 			}
 		}
 	}()

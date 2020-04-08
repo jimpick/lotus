@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"golang.org/x/xerrors"
+
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
@@ -181,13 +183,13 @@ func (mv *MessageValidator) Validate(ctx context.Context, pid peer.ID, msg *pubs
 	}
 
 	if err := mv.mpool.Add(m); err != nil {
-		log.Warnf("failed to add message from network to message pool (From: %s, To: %s, Nonce: %d, Value: %s): %s", m.Message.From, m.Message.To, m.Message.Nonce, types.FIL(m.Message.Value), err)
+		log.Debugf("failed to add message from network to message pool (From: %s, To: %s, Nonce: %d, Value: %s): %s", m.Message.From, m.Message.To, m.Message.Nonce, types.FIL(m.Message.Value), err)
 		ctx, _ = tag.New(
 			ctx,
 			tag.Insert(metrics.FailureType, "add"),
 		)
 		stats.Record(ctx, metrics.MessageValidationFailure.M(1))
-		return false
+		return xerrors.Is(err, messagepool.ErrBroadcastAnyway)
 	}
 	stats.Record(ctx, metrics.MessageValidationSuccess.M(1))
 	return true

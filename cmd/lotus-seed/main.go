@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/docker/go-units"
+	"github.com/filecoin-project/sector-storage/ffiwrapper"
 	"io/ioutil"
 	"os"
 
@@ -15,7 +17,6 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/abi/big"
 
-	lapi "github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/cmd/lotus-seed/seed"
@@ -40,7 +41,7 @@ func main() {
 		Version: build.UserVersion,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:  "sectorbuilder-dir",
+				Name:  "sector-dir",
 				Value: "~/.genesis-sectors",
 			},
 		},
@@ -62,9 +63,9 @@ var preSealCmd = &cli.Command{
 			Value: "t01000",
 			Usage: "specify the future address of your miner",
 		},
-		&cli.Uint64Flag{
+		&cli.StringFlag{
 			Name:  "sector-size",
-			Value: uint64(build.SectorSizes[0]),
+			Value: "2KiB",
 			Usage: "specify size of sectors to pre-seal",
 		},
 		&cli.StringFlag{
@@ -89,7 +90,7 @@ var preSealCmd = &cli.Command{
 		},
 	},
 	Action: func(c *cli.Context) error {
-		sdir := c.String("sectorbuilder-dir")
+		sdir := c.String("sector-dir")
 		sbroot, err := homedir.Expand(sdir)
 		if err != nil {
 			return err
@@ -113,7 +114,13 @@ var preSealCmd = &cli.Command{
 			}
 		}
 
-		rp, _, err := lapi.ProofTypeFromSectorSize(abi.SectorSize(c.Uint64("sector-size")))
+		sectorSizeInt, err := units.RAMInBytes(c.String("sector-size"))
+		if err != nil {
+			return err
+		}
+		sectorSize := abi.SectorSize(sectorSizeInt)
+
+		rp, _, err := ffiwrapper.ProofTypeFromSectorSize(sectorSize)
 		if err != nil {
 			return err
 		}

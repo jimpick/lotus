@@ -1,10 +1,14 @@
 package sealing
 
 import (
-	"github.com/filecoin-project/specs-actors/actors/abi"
+	"bytes"
+	"context"
+
 	"github.com/ipfs/go-cid"
 
-	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/specs-actors/actors/abi"
+	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
+	"github.com/filecoin-project/specs-storage/storage"
 )
 
 type Piece struct {
@@ -25,9 +29,9 @@ type Log struct {
 }
 
 type SectorInfo struct {
-	State    api.SectorState
-	SectorID abi.SectorNumber
-	Nonce    uint64 // TODO: remove
+	State        SectorState
+	SectorNumber abi.SectorNumber // TODO: this field's name should be changed to SectorNumber
+	Nonce        uint64           // TODO: remove
 
 	SectorType abi.RegisteredProof
 
@@ -35,19 +39,25 @@ type SectorInfo struct {
 
 	Pieces []Piece
 
-	// PreCommit
-	CommD  *cid.Cid
-	CommR  *cid.Cid
-	Proof  []byte
-	Ticket api.SealTicket
+	// PreCommit1
+	TicketValue   abi.SealRandomness
+	TicketEpoch   abi.ChainEpoch
+	PreCommit1Out storage.PreCommit1Out
+
+	// PreCommit2
+	CommD *cid.Cid
+	CommR *cid.Cid
+	Proof []byte
 
 	PreCommitMessage *cid.Cid
 
 	// WaitSeed
-	Seed api.SealSeed
+	SeedValue abi.InteractiveSealRandomness
+	SeedEpoch abi.ChainEpoch
 
 	// Committing
 	CommitMessage *cid.Cid
+	InvalidProofs uint64 // failed proof computations (doesn't validate with proof inputs)
 
 	// Faults
 	FaultReportMsg *cid.Cid
@@ -86,4 +96,28 @@ func (t *SectorInfo) existingPieces() []abi.UnpaddedPieceSize {
 		out[i] = piece.Size
 	}
 	return out
+}
+
+type TicketFn func(context.Context) (abi.SealRandomness, abi.ChainEpoch, error)
+
+type SectorIDCounter interface {
+	Next() (abi.SectorNumber, error)
+}
+
+type TipSetToken []byte
+
+type MsgLookup struct {
+	Receipt   MessageReceipt
+	TipSetTok TipSetToken
+	Height    abi.ChainEpoch
+}
+
+type MessageReceipt struct {
+	ExitCode exitcode.ExitCode
+	Return   []byte
+	GasUsed  int64
+}
+
+func (mr *MessageReceipt) Equals(o *MessageReceipt) bool {
+	return mr.ExitCode == o.ExitCode && bytes.Equal(mr.Return, o.Return) && mr.GasUsed == o.GasUsed
 }

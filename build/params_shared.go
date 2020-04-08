@@ -2,14 +2,19 @@ package build
 
 import (
 	"math/big"
+
+	"github.com/libp2p/go-libp2p-core/protocol"
+
+	"github.com/filecoin-project/lotus/node/modules/dtypes"
 )
 
 // Core network constants
 
-const NetworkName = "interop"
-const BlocksTopic = "/fil/blocks/" + NetworkName
-const MessagesTopic = "/fil/msgs/" + NetworkName
-const DhtProtocolName = "/fil/kad/" + NetworkName
+func BlocksTopic(netName dtypes.NetworkName) string   { return "/fil/blocks/" + string(netName) }
+func MessagesTopic(netName dtypes.NetworkName) string { return "/fil/msgs/" + string(netName) }
+func DhtProtocolName(netName dtypes.NetworkName) protocol.ID {
+	return protocol.ID("/fil/kad/" + string(netName))
+}
 
 // /////
 // Storage
@@ -55,16 +60,16 @@ const FallbackPoStConfidence = 6
 const SealRandomnessLookback = Finality
 
 // Epochs
-const SealRandomnessLookbackLimit = SealRandomnessLookback + 2000
+const SealRandomnessLookbackLimit = SealRandomnessLookback + 2000 // TODO: Get from spec specs-actors
 
 // Maximum lookback that randomness can be sourced from for a seal proof submission
-const MaxSealLookback = SealRandomnessLookbackLimit + 2000
+const MaxSealLookback = SealRandomnessLookbackLimit + 2000 // TODO: Get from specs-actors
 
 // /////
 // Mining
 
 // Epochs
-const EcRandomnessLookback = 300
+const EcRandomnessLookback = 1
 
 // /////
 // Devnet settings

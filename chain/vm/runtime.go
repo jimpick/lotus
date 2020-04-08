@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"runtime/debug"
+	"fmt"
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/abi/big"
+	"github.com/filecoin-project/specs-actors/actors/builtin"
+	sainit "github.com/filecoin-project/specs-actors/actors/builtin/init"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
 	"github.com/filecoin-project/specs-actors/actors/runtime"
 	vmr "github.com/filecoin-project/specs-actors/actors/runtime"
@@ -19,6 +21,7 @@ import (
 	cbor "github.com/ipfs/go-ipld-cbor"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	"go.opencensus.io/trace"
+	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/lotus/chain/actors/aerrors"
 	"github.com/filecoin-project/lotus/chain/state"
@@ -28,35 +31,50 @@ import (
 type Runtime struct {
 	ctx context.Context
 
-	vm     *VM
-	state  *state.StateTree
-	msg    *types.Message
-	height abi.ChainEpoch
-	cst    cbor.IpldStore
+	vm        *VM
+	state     *state.StateTree
+	msg       *types.Message
+	vmsg      vmr.Message
+	height    abi.ChainEpoch
+	cst       cbor.IpldStore
+	pricelist Pricelist
 
-	gasAvailable types.BigInt
-	gasUsed      types.BigInt
+	gasAvailable int64
+	gasUsed      int64
 
 	sys runtime.Syscalls
 
 	// address that started invoke chain
-	origin address.Address
+	origin      address.Address
+	originNonce uint64
 
 	internalExecutions []*ExecutionResult
+	numActorsCreated   uint64
 }
 
-func (rs *Runtime) ResolveAddress(address address.Address) (ret address.Address, ok bool) {
-	r, err := rs.LookupID(address)
-	if err != nil { // TODO: check notfound
-		rs.Abortf(exitcode.ErrPlaceholder, "resolve address: %v", err)
+func (rt *Runtime) ResolveAddress(addr address.Address) (ret address.Address, ok bool) {
+	r, err := rt.state.LookupID(addr)
+	if err != nil {
+		if xerrors.Is(err, sainit.ErrAddressNotFound) {
+			return address.Undef, false
+		}
+		panic(aerrors.Fatalf("failed to resolve address %s: %s", addr, err))
 	}
 	return r, true
 }
 
+type notFoundErr interface {
+	IsNotFound() bool
+}
+
 func (rs *Runtime) Get(c cid.Cid, o vmr.CBORUnmarshaler) bool {
 	if err := rs.cst.Get(context.TODO(), c, o); err != nil {
-		// TODO: err not found?
-		rs.Abortf(exitcode.ErrPlaceholder, "storage get: %v", err)
+		var nfe notFoundErr
+		if xerrors.As(err, &nfe) && nfe.IsNotFound() {
+			return false
+		}
+
+		panic(aerrors.Fatalf("failed to get cbor object %s: %s", c, err))
 	}
 	return true
 }
@@ -64,7 +82,7 @@ func (rs *Runtime) Get(c cid.Cid, o vmr.CBORUnmarshaler) bool {
 func (rs *Runtime) Put(x vmr.CBORMarshaler) cid.Cid {
 	c, err := rs.cst.Put(context.TODO(), x)
 	if err != nil {
-		rs.Abortf(exitcode.ErrPlaceholder, "storage put: %v", err) // todo: spec code?
+		panic(aerrors.Fatalf("failed to put cbor object: %s", err))
 	}
 	return c
 }
@@ -75,13 +93,11 @@ func (rs *Runtime) shimCall(f func() interface{}) (rval []byte, aerr aerrors.Act
 	defer func() {
 		if r := recover(); r != nil {
 			if ar, ok := r.(aerrors.ActorError); ok {
-				log.Warn("VM.Call failure: ", ar)
-				debug.PrintStack()
+				log.Errorf("VM.Call failure: %+v", ar)
 				aerr = ar
 				return
 			}
-			debug.PrintStack()
-			log.Errorf("ERROR")
+			log.Errorf("spec actors failure: %s", r)
 			aerr = aerrors.Newf(1, "spec actors failure: %s", r)
 		}
 	}()
@@ -106,20 +122,7 @@ func (rs *Runtime) shimCall(f func() interface{}) (rval []byte, aerr aerrors.Act
 }
 
 func (rs *Runtime) Message() vmr.Message {
-	var err error
-
-	rawm := *rs.msg
-	rawm.From, err = rs.LookupID(rawm.From)
-	if err != nil {
-		rs.Abortf(exitcode.ErrPlaceholder, "resolve from address: %v", err)
-	}
-
-	rawm.To, err = rs.LookupID(rawm.To)
-	if err != nil {
-		rs.Abortf(exitcode.ErrPlaceholder, "resolve to address: %v", err)
-	}
-
-	return &rawm
+	return rs.vmsg
 }
 
 func (rs *Runtime) ValidateImmediateCallerAcceptAny() {
@@ -137,8 +140,11 @@ func (rs *Runtime) CurrentBalance() abi.TokenAmount {
 func (rs *Runtime) GetActorCodeCID(addr address.Address) (ret cid.Cid, ok bool) {
 	act, err := rs.state.GetActor(addr)
 	if err != nil {
-		// todo: notfound
-		rs.Abortf(exitcode.ErrPlaceholder, "%v", err)
+		if xerrors.Is(err, types.ErrActorNotFound) {
+			return cid.Undef, false
+		}
+
+		panic(aerrors.Fatalf("failed to get actor: %s", err))
 	}
 
 	return act.Code, true
@@ -147,7 +153,7 @@ func (rs *Runtime) GetActorCodeCID(addr address.Address) (ret cid.Cid, ok bool) 
 func (rt *Runtime) GetRandomness(personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) abi.Randomness {
 	res, err := rt.vm.rand.GetRandomness(rt.ctx, personalization, int64(randEpoch), entropy)
 	if err != nil {
-		rt.Abortf(exitcode.SysErrInternal, "could not get randomness: %s", err)
+		panic(aerrors.Fatalf("could not get randomness: %s", err))
 	}
 	return res
 }
@@ -158,30 +164,28 @@ func (rs *Runtime) Store() vmr.Store {
 
 func (rt *Runtime) NewActorAddress() address.Address {
 	var b bytes.Buffer
-	if err := rt.Message().Caller().MarshalCBOR(&b); err != nil { // todo: spec says cbor; why not just bytes?
-		rt.Abortf(exitcode.ErrSerialization, "writing caller address into a buffer: %v", err)
+	oa, _ := ResolveToKeyAddr(rt.vm.cstate, rt.vm.cst, rt.origin)
+	if err := oa.MarshalCBOR(&b); err != nil { // todo: spec says cbor; why not just bytes?
+		panic(aerrors.Fatalf("writing caller address into a buffer: %v", err))
 	}
 
-	act, err := rt.state.GetActor(rt.origin)
-	if err != nil {
-		rt.Abortf(exitcode.SysErrInternal, "getting top level actor: %v", err)
+	if err := binary.Write(&b, binary.BigEndian, rt.originNonce); err != nil {
+		panic(aerrors.Fatalf("writing nonce address into a buffer: %v", err))
 	}
-
-	if err := binary.Write(&b, binary.BigEndian, act.Nonce); err != nil {
-		rt.Abortf(exitcode.ErrSerialization, "writing nonce address into a buffer: %v", err)
-	}
-	if err := binary.Write(&b, binary.BigEndian, uint64(0)); err != nil { // TODO: expose on vm
-		rt.Abortf(exitcode.ErrSerialization, "writing callSeqNum address into a buffer: %v", err)
+	if err := binary.Write(&b, binary.BigEndian, rt.numActorsCreated); err != nil { // TODO: expose on vm
+		panic(aerrors.Fatalf("writing callSeqNum address into a buffer: %v", err))
 	}
 	addr, err := address.NewActorAddress(b.Bytes())
 	if err != nil {
-		rt.Abortf(exitcode.ErrSerialization, "create actor address: %v", err)
+		panic(aerrors.Fatalf("create actor address: %v", err))
 	}
 
+	rt.incrementNumActorsCreated()
 	return addr
 }
 
 func (rt *Runtime) CreateActor(codeId cid.Cid, address address.Address) {
+	rt.ChargeGas(rt.Pricelist().OnCreateActor())
 	var err error
 
 	err = rt.state.SetActor(address, &types.Actor{
@@ -191,20 +195,25 @@ func (rt *Runtime) CreateActor(codeId cid.Cid, address address.Address) {
 		Balance: big.Zero(),
 	})
 	if err != nil {
-		rt.Abortf(exitcode.SysErrInternal, "creating actor entry: %v", err)
+		panic(aerrors.Fatalf("creating actor entry: %v", err))
 	}
 }
 
 func (rt *Runtime) DeleteActor() {
+	rt.ChargeGas(rt.Pricelist().OnDeleteActor())
 	act, err := rt.state.GetActor(rt.Message().Receiver())
 	if err != nil {
-		rt.Abortf(exitcode.SysErrInternal, "failed to load actor in delete actor: %s", err)
+		if xerrors.Is(err, types.ErrActorNotFound) {
+			rt.Abortf(exitcode.SysErrorIllegalActor, "failed to load actor in delete actor: %s", err)
+		}
+		panic(aerrors.Fatalf("failed to get actor: %s", err))
 	}
 	if !act.Balance.IsZero() {
-		rt.Abortf(exitcode.SysErrInternal, "cannot delete actor with non-zero balance")
+		rt.vm.transfer(rt.Message().Receiver(), builtin.BurntFundsActorAddr, act.Balance)
 	}
+
 	if err := rt.state.DeleteActor(rt.Message().Receiver()); err != nil {
-		rt.Abortf(exitcode.SysErrInternal, "failed to delete actor: %s", err)
+		panic(aerrors.Fatalf("failed to delete actor: %s", err))
 	}
 }
 
@@ -220,17 +229,14 @@ func (rs *Runtime) StartSpan(name string) vmr.TraceSpan {
 }
 
 func (rt *Runtime) ValidateImmediateCallerIs(as ...address.Address) {
-	imm, err := rt.LookupID(rt.Message().Caller())
-	if err != nil {
-		rt.Abortf(exitcode.ErrIllegalState, "couldn't resolve immediate caller")
-	}
+	imm := rt.Message().Caller()
 
 	for _, a := range as {
 		if imm == a {
 			return
 		}
 	}
-	rt.Abortf(exitcode.ErrForbidden, "caller %s is not one of %s", rt.Message().Caller(), as)
+	rt.Abortf(exitcode.SysErrForbidden, "caller %s is not one of %s", rt.Message().Caller(), as)
 }
 
 func (rt *Runtime) Context() context.Context {
@@ -238,7 +244,8 @@ func (rt *Runtime) Context() context.Context {
 }
 
 func (rs *Runtime) Abortf(code exitcode.ExitCode, msg string, args ...interface{}) {
-	panic(aerrors.NewfSkip(2, uint8(code), msg, args...))
+	log.Error("Abortf: ", fmt.Sprintf(msg, args...))
+	panic(aerrors.NewfSkip(2, code, msg, args...))
 }
 
 func (rs *Runtime) AbortStateMsg(msg string) {
@@ -248,14 +255,14 @@ func (rs *Runtime) AbortStateMsg(msg string) {
 func (rt *Runtime) ValidateImmediateCallerType(ts ...cid.Cid) {
 	callerCid, ok := rt.GetActorCodeCID(rt.Message().Caller())
 	if !ok {
-		rt.Abortf(exitcode.ErrIllegalArgument, "failed to lookup code cid for caller")
+		panic(aerrors.Fatalf("failed to lookup code cid for caller"))
 	}
 	for _, t := range ts {
 		if t == callerCid {
 			return
 		}
 	}
-	rt.Abortf(exitcode.ErrForbidden, "caller cid type %q was not one of %v", callerCid, ts)
+	rt.Abortf(exitcode.SysErrForbidden, "caller cid type %q was not one of %v", callerCid, ts)
 }
 
 func (rs *Runtime) CurrEpoch() abi.ChainEpoch {
@@ -280,7 +287,7 @@ func (rs *Runtime) Send(to address.Address, method abi.MethodNum, m vmr.CBORMars
 		params = buf.Bytes()
 	}
 
-	ret, err := rs.internalSend(to, method, types.BigInt(value), params)
+	ret, err := rs.internalSend(rs.Message().Receiver(), to, method, types.BigInt(value), params)
 	if err != nil {
 		if err.IsFatal() {
 			panic(err)
@@ -291,7 +298,7 @@ func (rs *Runtime) Send(to address.Address, method abi.MethodNum, m vmr.CBORMars
 	return &dumbWrapperType{ret}, 0
 }
 
-func (rt *Runtime) internalSend(to address.Address, method abi.MethodNum, value types.BigInt, params []byte) ([]byte, aerrors.ActorError) {
+func (rt *Runtime) internalSend(from, to address.Address, method abi.MethodNum, value types.BigInt, params []byte) ([]byte, aerrors.ActorError) {
 	ctx, span := trace.StartSpan(rt.ctx, "vmc.Send")
 	defer span.End()
 	if span.IsRecordingEvents() {
@@ -303,7 +310,7 @@ func (rt *Runtime) internalSend(to address.Address, method abi.MethodNum, value 
 	}
 
 	msg := &types.Message{
-		From:     rt.Message().Receiver(),
+		From:     from,
 		To:       to,
 		Method:   method,
 		Value:    value,
@@ -317,32 +324,34 @@ func (rt *Runtime) internalSend(to address.Address, method abi.MethodNum, value 
 	}
 	defer st.ClearSnapshot()
 
-	ret, err, subrt := rt.vm.send(ctx, msg, rt, 0)
-	if err != nil {
-		if err := st.Revert(); err != nil {
-			return nil, aerrors.Escalate(err, "failed to revert state tree after failed subcall")
+	ret, errSend, subrt := rt.vm.send(ctx, msg, rt, 0)
+	if errSend != nil {
+		if errRevert := st.Revert(); errRevert != nil {
+			return nil, aerrors.Escalate(errRevert, "failed to revert state tree after failed subcall")
 		}
 	}
 
 	mr := types.MessageReceipt{
-		ExitCode: exitcode.ExitCode(aerrors.RetCode(err)),
+		ExitCode: exitcode.ExitCode(aerrors.RetCode(errSend)),
 		Return:   ret,
-		GasUsed:  types.EmptyInt,
+		GasUsed:  0,
 	}
 
-	var es = ""
-	if err != nil {
-		es = err.Error()
-	}
 	er := ExecutionResult{
-		Msg:      msg,
-		MsgRct:   &mr,
-		Error:    es,
-		Subcalls: subrt.internalExecutions,
+		Msg:    msg,
+		MsgRct: &mr,
 	}
 
+	if errSend != nil {
+		er.Error = errSend.Error()
+	}
+
+	if subrt != nil {
+		er.Subcalls = subrt.internalExecutions
+		rt.numActorsCreated = subrt.numActorsCreated
+	}
 	rt.internalExecutions = append(rt.internalExecutions, &er)
-	return ret, err
+	return ret, errSend
 }
 
 func (rs *Runtime) State() vmr.StateHandle {
@@ -383,10 +392,6 @@ func (ssh *shimStateHandle) Transaction(obj vmr.CBORer, f func() interface{}) in
 	return out
 }
 
-func (rt *Runtime) LookupID(a address.Address) (address.Address, error) {
-	return rt.state.LookupID(a)
-}
-
 func (rt *Runtime) GetBalance(a address.Address) (types.BigInt, aerrors.ActorError) {
 	act, err := rt.state.GetActor(a)
 	switch err {
@@ -400,8 +405,6 @@ func (rt *Runtime) GetBalance(a address.Address) (types.BigInt, aerrors.ActorErr
 }
 
 func (rt *Runtime) stateCommit(oldh, newh cid.Cid) aerrors.ActorError {
-	rt.ChargeGas(gasCommit)
-
 	// TODO: we can make this more efficient in the future...
 	act, err := rt.state.GetActor(rt.Message().Receiver())
 	if err != nil {
@@ -421,10 +424,26 @@ func (rt *Runtime) stateCommit(oldh, newh cid.Cid) aerrors.ActorError {
 	return nil
 }
 
-func (rt *Runtime) ChargeGas(amount uint64) {
-	toUse := types.NewInt(amount)
-	rt.gasUsed = types.BigAdd(rt.gasUsed, toUse)
-	if rt.gasUsed.GreaterThan(rt.gasAvailable) {
-		rt.Abortf(exitcode.SysErrOutOfGas, "not enough gas: used=%s, available=%s", rt.gasUsed, rt.gasAvailable)
+func (rt *Runtime) ChargeGas(toUse int64) {
+	err := rt.chargeGasSafe(toUse)
+	if err != nil {
+		panic(err)
 	}
+}
+
+func (rt *Runtime) chargeGasSafe(toUse int64) aerrors.ActorError {
+	if rt.gasUsed+toUse > rt.gasAvailable {
+		rt.gasUsed = rt.gasAvailable
+		return aerrors.Newf(exitcode.SysErrOutOfGas, "not enough gas: used=%d, available=%d", rt.gasUsed, rt.gasAvailable)
+	}
+	rt.gasUsed += toUse
+	return nil
+}
+
+func (rt *Runtime) Pricelist() Pricelist {
+	return rt.pricelist
+}
+
+func (rt *Runtime) incrementNumActorsCreated() {
+	rt.numActorsCreated++
 }

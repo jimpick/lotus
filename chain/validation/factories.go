@@ -31,7 +31,7 @@ type fakeRandSrc struct {
 }
 
 func (r fakeRandSrc) Randomness(_ context.Context, _ acrypto.DomainSeparationTag, _ abi.ChainEpoch, _ []byte) (abi.Randomness, error) {
-	panic("implement me")
+	return abi.Randomness("sausages"), nil
 }
 
 func (f *Factories) NewRandomnessSource() vstate.RandomnessSource {
@@ -41,7 +41,7 @@ func (f *Factories) NewRandomnessSource() vstate.RandomnessSource {
 func (f *Factories) NewValidationConfig() vstate.ValidationConfig {
 	trackGas := true
 	checkExit := true
-	checkRet := false // TODO enable return value checking once https://github.com/filecoin-project/specs-actors/pull/230 lands
-	// ignore gas and return value assertions
-	return NewConfig(trackGas, checkExit, checkRet)
+	checkRet := true
+	checkState := true
+	return NewConfig(trackGas, checkExit, checkRet, checkState)
 }

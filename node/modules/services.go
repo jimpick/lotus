@@ -3,11 +3,13 @@ package modules
 import (
 	"context"
 
+	eventbus "github.com/libp2p/go-eventbus"
+	event "github.com/libp2p/go-libp2p-core/event"
 	"github.com/libp2p/go-libp2p-core/host"
-	inet "github.com/libp2p/go-libp2p-core/network"
 	peer "github.com/libp2p/go-libp2p-peer"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"go.uber.org/fx"
+	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket/discovery"
@@ -23,20 +25,26 @@ import (
 	"github.com/filecoin-project/lotus/node/modules/helpers"
 )
 
-func RunHello(mctx helpers.MetricsCtx, lc fx.Lifecycle, h host.Host, svc *hello.Service) {
+func RunHello(mctx helpers.MetricsCtx, lc fx.Lifecycle, h host.Host, svc *hello.Service) error {
 	h.SetStreamHandler(hello.ProtocolID, svc.HandleStream)
 
-	bundle := inet.NotifyBundle{
-		ConnectedF: func(_ inet.Network, c inet.Conn) {
+	sub, err := h.EventBus().Subscribe(new(event.EvtPeerIdentificationCompleted), eventbus.BufSize(1024))
+	if err != nil {
+		return xerrors.Errorf("failed to subscribe to event bus: %w", err)
+	}
+
+	go func() {
+		for evt := range sub.Out() {
+			pic := evt.(event.EvtPeerIdentificationCompleted)
 			go func() {
-				if err := svc.SayHello(helpers.LifecycleCtx(mctx, lc), c.RemotePeer()); err != nil {
+				if err := svc.SayHello(helpers.LifecycleCtx(mctx, lc), pic.Peer); err != nil {
 					log.Warnw("failed to say hello", "error", err)
 					return
 				}
 			}()
-		},
-	}
-	h.Network().Notify(&bundle)
+		}
+	}()
+	return nil
 }
 
 func RunPeerMgr(mctx helpers.MetricsCtx, lc fx.Lifecycle, pmgr *peermgr.PeerMgr) {
@@ -47,10 +55,10 @@ func RunBlockSync(h host.Host, svc *blocksync.BlockSyncService) {
 	h.SetStreamHandler(blocksync.BlockSyncProtocolID, svc.HandleStream)
 }
 
-func HandleIncomingBlocks(mctx helpers.MetricsCtx, lc fx.Lifecycle, ps *pubsub.PubSub, s *chain.Syncer, h host.Host) {
+func HandleIncomingBlocks(mctx helpers.MetricsCtx, lc fx.Lifecycle, ps *pubsub.PubSub, s *chain.Syncer, h host.Host, nn dtypes.NetworkName) {
 	ctx := helpers.LifecycleCtx(mctx, lc)
 
-	blocksub, err := ps.Subscribe(build.BlocksTopic)
+	blocksub, err := ps.Subscribe(build.BlocksTopic(nn))
 	if err != nil {
 		panic(err)
 	}
@@ -60,24 +68,24 @@ func HandleIncomingBlocks(mctx helpers.MetricsCtx, lc fx.Lifecycle, ps *pubsub.P
 		h.ConnManager().TagPeer(p, "badblock", -1000)
 	})
 
-	if err := ps.RegisterTopicValidator(build.BlocksTopic, v.Validate); err != nil {
+	if err := ps.RegisterTopicValidator(build.BlocksTopic(nn), v.Validate); err != nil {
 		panic(err)
 	}
 
 	go sub.HandleIncomingBlocks(ctx, blocksub, s, h.ConnManager())
 }
 
-func HandleIncomingMessages(mctx helpers.MetricsCtx, lc fx.Lifecycle, ps *pubsub.PubSub, mpool *messagepool.MessagePool) {
+func HandleIncomingMessages(mctx helpers.MetricsCtx, lc fx.Lifecycle, ps *pubsub.PubSub, mpool *messagepool.MessagePool, nn dtypes.NetworkName) {
 	ctx := helpers.LifecycleCtx(mctx, lc)
 
-	msgsub, err := ps.Subscribe(build.MessagesTopic)
+	msgsub, err := ps.Subscribe(build.MessagesTopic(nn))
 	if err != nil {
 		panic(err)
 	}
 
 	v := sub.NewMessageValidator(mpool)
 
-	if err := ps.RegisterTopicValidator(build.MessagesTopic, v.Validate); err != nil {
+	if err := ps.RegisterTopicValidator(build.MessagesTopic(nn), v.Validate); err != nil {
 		panic(err)
 	}
 

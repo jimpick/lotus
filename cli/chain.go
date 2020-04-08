@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	cborutil "github.com/filecoin-project/go-cbor-util"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/builtin"
+	"github.com/filecoin-project/specs-actors/actors/builtin/account"
 	"github.com/filecoin-project/specs-actors/actors/builtin/power"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 	cid "github.com/ipfs/go-cid"
@@ -415,14 +417,24 @@ var chainGetCmd = &cli.Command{
 			Name:  "as-type",
 			Usage: "specify type to interpret output as",
 		},
+		&cli.BoolFlag{
+			Name:  "verbose",
+			Value: false,
+		},
 	},
 	Description: `Get ipld node under a specified path:
 
    lotus chain get /ipfs/[cid]/some/path
 
+   Path prefixes:
+   - /ipfs/[cid], /ipld/[cid] - traverse IPLD path
+   - /pstate - traverse from head.ParentStateRoot
+
    Note:
    You can use special path elements to traverse through some data structures:
    - /ipfs/[cid]/@H:elem - get 'elem' from hamt
+   - /ipfs/[cid]/@Hi:123 - get varint elem 123 from hamt
+   - /ipfs/[cid]/@Hu:123 - get uvarint elem 123 from hamt
    - /ipfs/[cid]/@Ha:t01 - get element under Addr(t01).Bytes
    - /ipfs/[cid]/@A:10 - get 10th amt element
 `,
@@ -434,7 +446,20 @@ var chainGetCmd = &cli.Command{
 		defer closer()
 		ctx := ReqContext(cctx)
 
-		obj, err := api.ChainGetNode(ctx, cctx.Args().First())
+		p := path.Clean(cctx.Args().First())
+		if strings.HasPrefix(p, "/pstate") {
+			p = p[len("/pstate"):]
+			head, err := api.ChainHead(ctx)
+			if err != nil {
+				return err
+			}
+			p = "/ipfs/" + head.ParentState().String() + p
+			if cctx.Bool("verbose") {
+				fmt.Println(p)
+			}
+		}
+
+		obj, err := api.ChainGetNode(ctx, p)
 		if err != nil {
 			return err
 		}
@@ -469,6 +494,8 @@ var chainGetCmd = &cli.Command{
 			return handleHamtAddress(ctx, api, obj.Cid)
 		case "cronevent":
 			cbu = new(power.CronEvent)
+		case "account-state":
+			cbu = new(account.State)
 		default:
 			return fmt.Errorf("unknown type: %q", t)
 		}
@@ -796,7 +823,7 @@ var slashConsensusFault = &cli.Command{
 			From:     def,
 			Value:    types.NewInt(0),
 			GasPrice: types.NewInt(1),
-			GasLimit: types.NewInt(10000000),
+			GasLimit: 10000000,
 			Method:   builtin.MethodsPower.ReportConsensusFault,
 			Params:   params,
 		}

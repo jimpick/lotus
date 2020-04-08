@@ -31,12 +31,12 @@ func doExecValue(ctx context.Context, vm *vm.VM, to, from address.Address, value
 		return nil, xerrors.Errorf("doExec failed to get from actor: %w", err)
 	}
 
-	ret, err := vm.ApplyMessage(ctx, &types.Message{
+	ret, err := vm.ApplyImplicitMessage(ctx, &types.Message{
 		To:       to,
 		From:     from,
 		Method:   method,
 		Params:   params,
-		GasLimit: types.NewInt(1000000),
+		GasLimit: 1000000,
 		GasPrice: types.NewInt(0),
 		Value:    value,
 		Nonce:    act.Nonce,
