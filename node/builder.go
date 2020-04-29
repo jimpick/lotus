@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-core/routing"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	record "github.com/libp2p/go-libp2p-record"
@@ -81,6 +82,7 @@ var (
 	BaseRoutingKey       = special{7} // fx groups + multiret
 	NatPortMapKey        = special{8} // Libp2p option
 	ConnectionManagerKey = special{9} // Libp2p option
+	AutoNATSvcKey        = special{10} // Libp2p option
 )
 
 type invoke int
@@ -160,7 +162,7 @@ func libp2p() Option {
 
 		Override(new(lp2p.RawHost), lp2p.Host),
 		Override(new(host.Host), lp2p.RoutedHost),
-		Override(new(lp2p.BaseIpfsRouting), lp2p.DHTRouting(false)),
+		Override(new(lp2p.BaseIpfsRouting), lp2p.DHTRouting(dht.ModeAuto)),
 
 		Override(DiscoveryHandlerKey, lp2p.DiscoveryHandler),
 		Override(AddrsFactoryKey, lp2p.AddrsFactory(nil, nil)),
@@ -174,6 +176,7 @@ func libp2p() Option {
 		Override(NatPortMapKey, lp2p.NatPortMap),
 
 		Override(ConnectionManagerKey, lp2p.ConnectionManager(50, 200, 20*time.Second, nil)),
+		Override(AutoNATSvcKey, lp2p.AutoNATService),
 
 		Override(new(*pubsub.PubSub), lp2p.GossipSub()),
 
@@ -280,9 +283,9 @@ func Online() Option {
 			Override(new(storage2.Prover), From(new(sectorstorage.SectorManager))),
 
 			Override(new(*sectorblocks.SectorBlocks), sectorblocks.NewSectorBlocks),
-			Override(new(sealing.TicketFn), modules.SealTicketGen),
 			Override(new(*storage.Miner), modules.StorageMiner),
 			Override(new(dtypes.NetworkName), modules.StorageNetworkName),
+			Override(new(beacon.RandomBeacon), modules.MinerRandomBeacon),
 
 			Override(new(dtypes.StagingBlockstore), modules.StagingBlockstore),
 			Override(new(dtypes.StagingDAG), modules.StagingDAG),
@@ -298,7 +301,7 @@ func Online() Option {
 			Override(HandleRetrievalKey, modules.HandleRetrieval),
 			Override(GetParamsKey, modules.GetParams),
 			Override(HandleDealsKey, modules.HandleDeals),
-			Override(new(gen.ElectionPoStProver), storage.NewElectionPoStProver),
+			Override(new(gen.WinningPoStProver), storage.NewWinningPoStProver),
 			Override(new(*miner.Miner), modules.SetupBlockProducer),
 		),
 	)
@@ -485,5 +488,6 @@ func Test() Option {
 	return Options(
 		Unset(RunPeerMgrKey),
 		Unset(new(*peermgr.PeerMgr)),
+		Override(new(beacon.RandomBeacon), testing.RandomBeacon),
 	)
 }

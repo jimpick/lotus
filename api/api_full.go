@@ -15,10 +15,9 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/builtin/market"
 	"github.com/filecoin-project/specs-actors/actors/builtin/miner"
 	"github.com/filecoin-project/specs-actors/actors/builtin/paych"
-	"github.com/filecoin-project/specs-actors/actors/builtin/reward"
+	"github.com/filecoin-project/specs-actors/actors/builtin/power"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
 
-	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 )
@@ -33,7 +32,7 @@ type FullNode interface {
 
 	// ChainNotify returns channel with chain head updates
 	// First message is guaranteed to be of len == 1, and type == 'current'
-	ChainNotify(context.Context) (<-chan []*store.HeadChange, error)
+	ChainNotify(context.Context) (<-chan []*HeadChange, error)
 	ChainHead(context.Context) (*types.TipSet, error)
 	ChainGetRandomness(ctx context.Context, tsk types.TipSetKey, personalization crypto.DomainSeparationTag, randEpoch abi.ChainEpoch, entropy []byte) (abi.Randomness, error)
 	ChainGetBlock(context.Context, cid.Cid) (*types.BlockHeader, error)
@@ -50,7 +49,7 @@ type FullNode interface {
 	ChainTipSetWeight(context.Context, types.TipSetKey) (types.BigInt, error)
 	ChainGetNode(ctx context.Context, p string) (*IpldObject, error)
 	ChainGetMessage(context.Context, cid.Cid) (*types.Message, error)
-	ChainGetPath(ctx context.Context, from types.TipSetKey, to types.TipSetKey) ([]*store.HeadChange, error)
+	ChainGetPath(ctx context.Context, from types.TipSetKey, to types.TipSetKey) ([]*HeadChange, error)
 	ChainExport(context.Context, types.TipSetKey) (<-chan []byte, error)
 
 	// syncer
@@ -66,12 +65,13 @@ type FullNode interface {
 	MpoolPushMessage(context.Context, *types.Message) (*types.SignedMessage, error) // get nonce, sign, push
 	MpoolGetNonce(context.Context, address.Address) (uint64, error)
 	MpoolSub(context.Context) (<-chan MpoolUpdate, error)
+	MpoolEstimateGasPrice(context.Context, uint64, address.Address, int64, types.TipSetKey) (types.BigInt, error)
 
 	// FullNodeStruct
 
 	// miner
 
-	MinerGetBaseInfo(context.Context, address.Address, types.TipSetKey) (*MiningBaseInfo, error)
+	MinerGetBaseInfo(context.Context, address.Address, abi.ChainEpoch, types.TipSetKey) (*MiningBaseInfo, error)
 	MinerCreateBlock(context.Context, *BlockTemplate) (*types.BlockMsg, error)
 
 	// // UX ?
@@ -101,6 +101,8 @@ type FullNode interface {
 	ClientFindData(ctx context.Context, root cid.Cid) ([]QueryOffer, error)
 	ClientRetrieve(ctx context.Context, order RetrievalOrder, ref FileRef) error
 	ClientQueryAsk(ctx context.Context, p peer.ID, miner address.Address) (*storagemarket.SignedStorageAsk, error)
+	ClientCalcCommP(ctx context.Context, inpath string, miner address.Address) (*CommPRet, error)
+	ClientGenCar(ctx context.Context, ref FileRef, outpath string) error
 
 	// ClientUnimport removes references to the specified file from filestore
 	//ClientUnimport(path string)
@@ -118,14 +120,15 @@ type FullNode interface {
 	StateListMessages(ctx context.Context, match *types.Message, tsk types.TipSetKey, toht abi.ChainEpoch) ([]cid.Cid, error)
 
 	StateNetworkName(context.Context) (dtypes.NetworkName, error)
-	StateMinerSectors(context.Context, address.Address, types.TipSetKey) ([]*ChainSectorInfo, error)
+	StateMinerSectors(context.Context, address.Address, *abi.BitField, bool, types.TipSetKey) ([]*ChainSectorInfo, error)
 	StateMinerProvingSet(context.Context, address.Address, types.TipSetKey) ([]*ChainSectorInfo, error)
+	StateMinerProvingDeadline(context.Context, address.Address, types.TipSetKey) (*miner.DeadlineInfo, error)
 	StateMinerPower(context.Context, address.Address, types.TipSetKey) (*MinerPower, error)
-	StateMinerWorker(context.Context, address.Address, types.TipSetKey) (address.Address, error)
-	StateMinerPeerID(ctx context.Context, m address.Address, tsk types.TipSetKey) (peer.ID, error)
-	StateMinerPostState(ctx context.Context, actor address.Address, tsk types.TipSetKey) (*miner.PoStState, error)
-	StateMinerSectorSize(context.Context, address.Address, types.TipSetKey) (abi.SectorSize, error)
+	StateMinerInfo(context.Context, address.Address, types.TipSetKey) (miner.MinerInfo, error)
+	StateMinerDeadlines(context.Context, address.Address, types.TipSetKey) (*miner.Deadlines, error)
 	StateMinerFaults(context.Context, address.Address, types.TipSetKey) ([]abi.SectorNumber, error)
+	StateMinerInitialPledgeCollateral(context.Context, address.Address, abi.SectorNumber, types.TipSetKey) (types.BigInt, error)
+	StateMinerAvailableBalance(context.Context, address.Address, types.TipSetKey) (types.BigInt, error)
 	StateSectorPreCommitInfo(context.Context, address.Address, abi.SectorNumber, types.TipSetKey) (miner.SectorPreCommitOnChainInfo, error)
 	StatePledgeCollateral(context.Context, types.TipSetKey) (types.BigInt, error)
 	StateWaitMsg(context.Context, cid.Cid) (*MsgLookup, error)
@@ -137,10 +140,10 @@ type FullNode interface {
 	StateMarketDeals(context.Context, types.TipSetKey) (map[string]MarketDeal, error)
 	StateMarketStorageDeal(context.Context, abi.DealID, types.TipSetKey) (*MarketDeal, error)
 	StateLookupID(context.Context, address.Address, types.TipSetKey) (address.Address, error)
+	StateAccountKey(context.Context, address.Address, types.TipSetKey) (address.Address, error)
 	StateChangedActors(context.Context, cid.Cid, cid.Cid) (map[string]types.Actor, error)
 	StateGetReceipt(context.Context, cid.Cid, types.TipSetKey) (*types.MessageReceipt, error)
 	StateMinerSectorCount(context.Context, address.Address, types.TipSetKey) (MinerSectors, error)
-	StateListRewards(context.Context, address.Address, types.TipSetKey) ([]reward.Reward, error)
 	StateCompute(context.Context, abi.ChainEpoch, []*types.Message, types.TipSetKey) (*ComputeStateOutput, error)
 
 	MsigGetAvailableBalance(context.Context, address.Address, types.TipSetKey) (types.BigInt, error)
@@ -168,8 +171,8 @@ type FileRef struct {
 }
 
 type MinerSectors struct {
-	Pset uint64
 	Sset uint64
+	Pset uint64
 }
 
 type Import struct {
@@ -255,8 +258,8 @@ type VoucherSpec struct {
 }
 
 type MinerPower struct {
-	MinerPower types.BigInt
-	TotalPower types.BigInt
+	MinerPower power.Claim
+	TotalPower power.Claim
 }
 
 type QueryOffer struct {
@@ -323,11 +326,11 @@ type MethodCall struct {
 }
 
 type StartDealParams struct {
-	Data           *storagemarket.DataRef
-	Wallet         address.Address
-	Miner          address.Address
-	EpochPrice     types.BigInt
-	BlocksDuration uint64
+	Data              *storagemarket.DataRef
+	Wallet            address.Address
+	Miner             address.Address
+	EpochPrice        types.BigInt
+	MinBlocksDuration uint64
 }
 
 type IpldObject struct {
@@ -382,19 +385,29 @@ type ComputeStateOutput struct {
 type MiningBaseInfo struct {
 	MinerPower      types.BigInt
 	NetworkPower    types.BigInt
-	Sectors         []*ChainSectorInfo
-	Worker          address.Address
+	Sectors         []abi.SectorInfo
+	WorkerKey       address.Address
 	SectorSize      abi.SectorSize
 	PrevBeaconEntry types.BeaconEntry
 }
 
 type BlockTemplate struct {
-	Miner        address.Address
-	Parents      types.TipSetKey
-	Ticket       *types.Ticket
-	Eproof       *types.ElectionProof
-	BeaconValues []types.BeaconEntry
-	Messages     []*types.SignedMessage
-	Epoch        abi.ChainEpoch
-	Timestamp    uint64
+	Miner            address.Address
+	Parents          types.TipSetKey
+	Ticket           *types.Ticket
+	Eproof           *types.ElectionProof
+	BeaconValues     []types.BeaconEntry
+	Messages         []*types.SignedMessage
+	Epoch            abi.ChainEpoch
+	Timestamp        uint64
+	WinningPoStProof []abi.PoStProof
+}
+
+type CommPRet struct {
+	Root cid.Cid
+	Size abi.UnpaddedPieceSize
+}
+type HeadChange struct {
+	Type string
+	Val  *types.TipSet
 }

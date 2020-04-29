@@ -1,18 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"golang.org/x/xerrors"
 
 	"gopkg.in/urfave/cli.v2"
 
-	"github.com/filecoin-project/specs-actors/actors/builtin/power"
+	"github.com/filecoin-project/specs-actors/actors/builtin/miner"
+	sealing "github.com/filecoin-project/storage-fsm"
 
 	"github.com/filecoin-project/lotus/api"
-	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
-	sealing "github.com/filecoin-project/storage-fsm"
 )
 
 var infoCmd = &cli.Command{
@@ -38,24 +39,40 @@ var infoCmd = &cli.Command{
 			return err
 		}
 
+		mact, err := api.StateGetActor(ctx, maddr, types.EmptyTSK)
+		if err != nil {
+			return err
+		}
+		var mas miner.State
+		{
+			rmas, err := api.ChainReadObj(ctx, mact.Head)
+			if err != nil {
+				return err
+			}
+			if err := mas.UnmarshalCBOR(bytes.NewReader(rmas)); err != nil {
+				return err
+			}
+		}
+
 		fmt.Printf("Miner: %s\n", maddr)
 
 		// Sector size
-		sizeByte, err := api.StateMinerSectorSize(ctx, maddr, types.EmptyTSK)
+		mi, err := api.StateMinerInfo(ctx, maddr, types.EmptyTSK)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("Sector Size: %s\n", types.SizeStr(types.NewInt(uint64(sizeByte))))
+		fmt.Printf("Sector Size: %s\n", types.SizeStr(types.NewInt(uint64(mi.SectorSize))))
 
 		pow, err := api.StateMinerPower(ctx, maddr, types.EmptyTSK)
 		if err != nil {
 			return err
 		}
 
-		percI := types.BigDiv(types.BigMul(pow.MinerPower, types.NewInt(1000000)), pow.TotalPower)
-		fmt.Printf("Power: %s / %s (%0.4f%%)\n", types.SizeStr(pow.MinerPower), types.SizeStr(pow.TotalPower), float64(percI.Int64())/10000)
-
+		rpercI := types.BigDiv(types.BigMul(pow.MinerPower.RawBytePower, types.NewInt(1000000)), pow.TotalPower.RawBytePower)
+		qpercI := types.BigDiv(types.BigMul(pow.MinerPower.QualityAdjPower, types.NewInt(1000000)), pow.TotalPower.QualityAdjPower)
+		fmt.Printf("Byte Power:   %s / %s (%0.4f%%)\n", types.SizeStr(pow.MinerPower.RawBytePower), types.SizeStr(pow.TotalPower.RawBytePower), float64(rpercI.Int64())/10000)
+		fmt.Printf("Actual Power: %s / %s (%0.4f%%)\n", types.DecStr(pow.MinerPower.QualityAdjPower), types.DecStr(pow.TotalPower.QualityAdjPower), float64(qpercI.Int64())/10000)
 		secCounts, err := api.StateMinerSectorCount(ctx, maddr, types.EmptyTSK)
 		if err != nil {
 			return err
@@ -65,15 +82,32 @@ var infoCmd = &cli.Command{
 			return err
 		}
 
-		fmt.Printf("\tCommitted: %s\n", types.SizeStr(types.BigMul(types.NewInt(secCounts.Sset), types.NewInt(uint64(sizeByte)))))
+		fmt.Printf("\tCommitted: %s\n", types.SizeStr(types.BigMul(types.NewInt(secCounts.Sset), types.NewInt(uint64(mi.SectorSize)))))
 		if len(faults) == 0 {
-			fmt.Printf("\tProving: %s\n", types.SizeStr(types.BigMul(types.NewInt(secCounts.Pset), types.NewInt(uint64(sizeByte)))))
+			fmt.Printf("\tProving: %s\n", types.SizeStr(types.BigMul(types.NewInt(secCounts.Pset), types.NewInt(uint64(mi.SectorSize)))))
 		} else {
 			fmt.Printf("\tProving: %s (%s Faulty, %.2f%%)\n",
-				types.SizeStr(types.BigMul(types.NewInt(secCounts.Pset-uint64(len(faults))), types.NewInt(uint64(sizeByte)))),
-				types.SizeStr(types.BigMul(types.NewInt(uint64(len(faults))), types.NewInt(uint64(sizeByte)))),
+				types.SizeStr(types.BigMul(types.NewInt(secCounts.Pset-uint64(len(faults))), types.NewInt(uint64(mi.SectorSize)))),
+				types.SizeStr(types.BigMul(types.NewInt(uint64(len(faults))), types.NewInt(uint64(mi.SectorSize)))),
 				float64(10000*uint64(len(faults))/secCounts.Pset)/100.)
 		}
+
+		fmt.Printf("Miner Balance: %s\n", types.FIL(mact.Balance))
+		fmt.Printf("\tPreCommit:   %s\n", types.FIL(mas.PreCommitDeposits))
+		fmt.Printf("\tLocked:      %s\n", types.FIL(mas.LockedFunds))
+		fmt.Printf("\tAvailable:   %s\n", types.FIL(types.BigSub(mact.Balance, types.BigAdd(mas.LockedFunds, mas.PreCommitDeposits))))
+		wb, err := api.WalletBalance(ctx, mi.Worker)
+		if err != nil {
+			return xerrors.Errorf("getting worker balance: %w", err)
+		}
+		fmt.Printf("Worker Balance: %s\n", types.FIL(wb))
+
+		mb, err := api.StateMarketBalance(ctx, maddr, types.EmptyTSK)
+		if err != nil {
+			return xerrors.Errorf("getting market balance: %w", err)
+		}
+		fmt.Printf("Market (Escrow):  %s\n", types.FIL(mb.Escrow))
+		fmt.Printf("Market (Locked):  %s\n", types.FIL(mb.Locked))
 
 		/*// TODO: indicate whether the post worker is in use
 		wstat, err := nodeApi.WorkerStats(ctx)
@@ -91,7 +125,7 @@ var infoCmd = &cli.Command{
 		fmt.Printf("\tCommit: %d\n", wstat.CommitWait)
 		fmt.Printf("\tUnseal: %d\n", wstat.UnsealWait)*/
 
-		ps, err := api.StateMinerPostState(ctx, maddr, types.EmptyTSK)
+		/*ps, err := api.StateMinerPostState(ctx, maddr, types.EmptyTSK)
 		if err != nil {
 			return err
 		}
@@ -113,7 +147,7 @@ var infoCmd = &cli.Command{
 			fmt.Printf("\tConsecutive Failures: %d\n", ps.NumConsecutiveFailures)
 		} else {
 			fmt.Printf("Proving Period: Not Proving\n")
-		}
+		}*/
 
 		sinfo, err := sectorsInfo(ctx, nodeApi)
 		if err != nil {
@@ -144,7 +178,7 @@ func sectorsInfo(ctx context.Context, napi api.StorageMiner) (map[sealing.Sector
 			return nil, err
 		}
 
-		out[st.State]++
+		out[sealing.SectorState(st.State)]++
 	}
 
 	return out, nil

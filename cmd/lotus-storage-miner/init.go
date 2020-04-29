@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"time"
 
 	"github.com/docker/go-units"
 	"github.com/google/uuid"
@@ -38,7 +37,7 @@ import (
 	lapi "github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/actors"
-	"github.com/filecoin-project/lotus/chain/beacon"
+	"github.com/filecoin-project/lotus/chain/beacon/drand"
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/genesis"
@@ -421,7 +420,7 @@ func storageMinerInit(ctx context.Context, cctx *cli.Context, api lapi.FullNode,
 				return err
 			}
 
-			ppt, spt, err := ffiwrapper.ProofTypeFromSectorSize(ssize)
+			spt, err := ffiwrapper.SealProofTypeFromSectorSize(ssize)
 			if err != nil {
 				return err
 			}
@@ -438,14 +437,24 @@ func storageMinerInit(ctx context.Context, cctx *cli.Context, api lapi.FullNode,
 
 			smgr, err := sectorstorage.New(ctx, lr, stores.NewIndex(), &ffiwrapper.Config{
 				SealProofType: spt,
-				PoStProofType: ppt,
 			}, sectorstorage.SealerConfig{true, true, true}, nil, sa)
 			if err != nil {
 				return err
 			}
-			epp := storage.NewElectionPoStProver(smgr, dtypes.MinerID(mid))
+			epp, err := storage.NewWinningPoStProver(api, smgr, ffiwrapper.ProofVerifier, dtypes.MinerID(mid))
+			if err != nil {
+				return err
+			}
 
-			beacon := beacon.NewMockBeacon(build.BlockDelay * time.Second)
+			gen, err := api.ChainGetGenesis(ctx)
+			if err != nil {
+				return err
+			}
+
+			beacon, err := drand.NewDrandBeacon(gen.Blocks()[0].Timestamp, build.BlockDelay)
+			if err != nil {
+				return err
+			}
 
 			m := miner.NewMiner(api, epp, beacon)
 			{
@@ -542,7 +551,7 @@ func makeHostKey(lr repo.LockedRepo) (crypto.PrivKey, error) {
 }
 
 func configureStorageMiner(ctx context.Context, api lapi.FullNode, addr address.Address, peerid peer.ID, gasPrice types.BigInt) error {
-	waddr, err := api.StateMinerWorker(ctx, addr, types.EmptyTSK)
+	mi, err := api.StateMinerInfo(ctx, addr, types.EmptyTSK)
 	if err != nil {
 		return xerrors.Errorf("getWorkerAddr returned bad address: %w", err)
 	}
@@ -554,7 +563,7 @@ func configureStorageMiner(ctx context.Context, api lapi.FullNode, addr address.
 
 	msg := &types.Message{
 		To:       addr,
-		From:     waddr,
+		From:     mi.Worker,
 		Method:   builtin.MethodsMiner.ChangePeerID,
 		Params:   enc,
 		Value:    types.NewInt(0),

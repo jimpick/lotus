@@ -7,6 +7,7 @@ import (
 	"reflect"
 
 	"github.com/filecoin-project/specs-actors/actors/builtin/account"
+	"github.com/filecoin-project/specs-actors/actors/builtin/verifreg"
 	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 
 	"github.com/ipfs/go-cid"
@@ -55,6 +56,7 @@ func NewInvoker() *invoker {
 	inv.Register(builtin.StorageMinerActorCodeID, miner.Actor{}, miner.State{})
 	inv.Register(builtin.MultisigActorCodeID, multisig.Actor{}, multisig.State{})
 	inv.Register(builtin.PaymentChannelActorCodeID, paych.Actor{}, paych.State{})
+	inv.Register(builtin.VerifiedRegistryActorCodeID, verifreg.Actor{}, verifreg.State{})
 	inv.Register(builtin.AccountActorCodeID, account.Actor{}, account.State{})
 
 	return inv
@@ -77,7 +79,7 @@ func (inv *invoker) Invoke(codeCid cid.Cid, rt runtime.Runtime, method abi.Metho
 func (inv *invoker) Register(c cid.Cid, instance Invokee, state interface{}) {
 	code, err := inv.transform(instance)
 	if err != nil {
-		panic(err)
+		panic(xerrors.Errorf("%s: %w", string(c.Hash()), err))
 	}
 	inv.builtInCode[c] = code
 	inv.builtInState[c] = reflect.TypeOf(state)

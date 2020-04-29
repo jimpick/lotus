@@ -13,9 +13,9 @@ import (
 
 	"github.com/filecoin-project/specs-actors/actors/abi"
 
+	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/types"
 	lcli "github.com/filecoin-project/lotus/cli"
-	sealing "github.com/filecoin-project/storage-fsm"
 )
 
 var sectorsCmd = &cli.Command{
@@ -142,7 +142,7 @@ var sectorsListCmd = &cli.Command{
 			provingIDs[info.ID] = struct{}{}
 		}
 
-		sset, err := fullApi.StateMinerSectors(ctx, maddr, types.EmptyTSK)
+		sset, err := fullApi.StateMinerSectors(ctx, maddr, nil, true, types.EmptyTSK)
 		if err != nil {
 			return err
 		}
@@ -236,7 +236,7 @@ var sectorsUpdateCmd = &cli.Command{
 			return xerrors.Errorf("could not parse sector ID: %w", err)
 		}
 
-		return nodeApi.SectorsUpdate(ctx, abi.SectorNumber(id), sealing.SectorState(cctx.Args().Get(1)))
+		return nodeApi.SectorsUpdate(ctx, abi.SectorNumber(id), api.SectorState(cctx.Args().Get(1)))
 	},
 }
 

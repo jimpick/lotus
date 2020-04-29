@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/filecoin-project/specs-actors/actors/runtime"
-
 	"github.com/ipfs/go-bitswap"
 	"github.com/ipfs/go-bitswap/network"
 	"github.com/ipfs/go-blockservice"
@@ -17,6 +15,9 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"go.uber.org/fx"
 	"golang.org/x/xerrors"
+
+	"github.com/filecoin-project/sector-storage/ffiwrapper"
+	"github.com/filecoin-project/specs-actors/actors/runtime"
 
 	"github.com/filecoin-project/lotus/chain"
 	"github.com/filecoin-project/lotus/chain/beacon"
@@ -34,7 +35,8 @@ func ChainExchange(mctx helpers.MetricsCtx, lc fx.Lifecycle, host host.Host, rt 
 	// prefix protocol for chain bitswap
 	// (so bitswap uses /chain/ipfs/bitswap/1.0.0 internally for chain sync stuff)
 	bitswapNetwork := network.NewFromIpfsHost(host, rt, network.Prefix("/chain"))
-	exch := bitswap.New(helpers.LifecycleCtx(mctx, lc), bitswapNetwork, bs)
+	bitswapOptions := []bitswap.Option{bitswap.ProvideEnabled(false)}
+	exch := bitswap.New(helpers.LifecycleCtx(mctx, lc), bitswapNetwork, bs, bitswapOptions...)
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
 			return exch.Close()
@@ -142,8 +144,8 @@ func NetworkName(mctx helpers.MetricsCtx, lc fx.Lifecycle, cs *store.ChainStore,
 	return netName, err
 }
 
-func NewSyncer(lc fx.Lifecycle, sm *stmgr.StateManager, bsync *blocksync.BlockSync, h host.Host, beacon beacon.RandomBeacon) (*chain.Syncer, error) {
-	syncer, err := chain.NewSyncer(sm, bsync, h.ConnManager(), h.ID(), beacon)
+func NewSyncer(lc fx.Lifecycle, sm *stmgr.StateManager, bsync *blocksync.BlockSync, h host.Host, beacon beacon.RandomBeacon, verifier ffiwrapper.Verifier) (*chain.Syncer, error) {
+	syncer, err := chain.NewSyncer(sm, bsync, h.ConnManager(), h.ID(), beacon, verifier)
 	if err != nil {
 		return nil, err
 	}

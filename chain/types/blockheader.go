@@ -29,6 +29,20 @@ type ElectionProof struct {
 type BeaconEntry struct {
 	Round uint64
 	Data  []byte
+
+	prevRound uint64
+}
+
+func NewBeaconEntry(round, prevRound uint64, data []byte) BeaconEntry {
+	return BeaconEntry{
+		Round:     round,
+		Data:      data,
+		prevRound: prevRound,
+	}
+}
+
+func (be *BeaconEntry) PrevRound() uint64 {
+	return be.prevRound
 }
 
 type BlockHeader struct {
@@ -39,6 +53,8 @@ type BlockHeader struct {
 	ElectionProof *ElectionProof
 
 	BeaconEntries []BeaconEntry
+
+	WinPoStProof []abi.PoStProof
 
 	Parents []cid.Cid // 3
 
@@ -159,6 +175,15 @@ func CidArrsEqual(a, b []cid.Cid) bool {
 		}
 	}
 	return true
+}
+
+func CidArrsContains(a []cid.Cid, b cid.Cid) bool {
+	for _, elem := range a {
+		if elem.Equals(b) {
+			return true
+		}
+	}
+	return false
 }
 
 var blocksPerEpoch = NewInt(build.BlocksPerEpoch)

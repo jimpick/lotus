@@ -16,7 +16,7 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/builtin/power"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
-	peer "github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"golang.org/x/xerrors"
 	"gopkg.in/urfave/cli.v2"
 
@@ -30,7 +30,7 @@ import (
 
 var log = logging.Logger("main")
 
-var sendPerRequest, _ = types.ParseFIL("0.005")
+var sendPerRequest, _ = types.ParseFIL("50")
 
 func main() {
 	logging.SetLogLevel("*", "INFO")
@@ -94,13 +94,18 @@ var runCmd = &cli.Command{
 			return xerrors.Errorf("parsing source address (provide correct --from flag!): %w", err)
 		}
 
+		defaultMinerPeer, err := peer.Decode("12D3KooWJpBNhwgvoZ15EB1JwRTRpxgM9D2fwq6eEktrJJG74aP6")
+		if err != nil {
+			return err
+		}
+
 		h := &handler{
 			ctx:  ctx,
 			api:  nodeApi,
 			from: from,
 			limiter: NewLimiter(LimiterConfig{
 				TotalRate:   time.Second,
-				TotalBurst:  20,
+				TotalBurst:  256,
 				IPRate:      time.Minute,
 				IPBurst:     5,
 				WalletRate:  15 * time.Minute,
@@ -108,12 +113,13 @@ var runCmd = &cli.Command{
 			}),
 			minerLimiter: NewLimiter(LimiterConfig{
 				TotalRate:   time.Second,
-				TotalBurst:  20,
+				TotalBurst:  256,
 				IPRate:      10 * time.Minute,
 				IPBurst:     2,
 				WalletRate:  1 * time.Hour,
 				WalletBurst: 2,
 			}),
+			defaultMinerPeer: defaultMinerPeer,
 		}
 
 		http.Handle("/", http.FileServer(rice.MustFindBox("site").HTTPBox()))
@@ -141,6 +147,8 @@ type handler struct {
 
 	limiter      *Limiter
 	minerLimiter *Limiter
+
+	defaultMinerPeer peer.ID
 }
 
 func (h *handler) send(w http.ResponseWriter, r *http.Request) {
@@ -231,7 +239,15 @@ func (h *handler) mkminer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Limit based on IP
-	limiter = h.minerLimiter.GetIPLimiter(r.RemoteAddr)
+	reqIP := r.Header.Get("X-Real-IP")
+	if reqIP == "" {
+		h, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			log.Errorf("could not get ip from: %s, err: %s", r.RemoteAddr, err)
+		}
+		reqIP = h
+	}
+	limiter = h.minerLimiter.GetIPLimiter(reqIP)
 	if !limiter.Allow() {
 		http.Error(w, http.StatusText(http.StatusTooManyRequests)+": IP limit", http.StatusTooManyRequests)
 		return
@@ -269,7 +285,7 @@ func (h *handler) mkminer(w http.ResponseWriter, r *http.Request) {
 		Owner:      owner,
 		Worker:     owner,
 		SectorSize: abi.SectorSize(ssize),
-		Peer:       peer.ID("SETME"),
+		Peer:       h.defaultMinerPeer,
 	})
 	if err != nil {
 		w.WriteHeader(400)

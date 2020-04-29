@@ -44,16 +44,16 @@ func ResolveToKeyAddr(state types.StateTree, cst cbor.IpldStore, addr address.Ad
 
 	act, err := state.GetActor(addr)
 	if err != nil {
-		return address.Undef, aerrors.Newf(exitcode.SysErrInternal, "failed to find actor: %s", addr)
+		return address.Undef, aerrors.Newf(exitcode.SysErrInvalidParameters, "failed to find actor: %s", addr)
 	}
 
 	if act.Code != builtin.AccountActorCodeID {
-		return address.Undef, aerrors.Fatalf("address %s was not for an account actor", addr)
+		return address.Undef, aerrors.Newf(exitcode.SysErrInvalidParameters, "address %s was not for an account actor", addr)
 	}
 
 	var aast account.State
 	if err := cst.Get(context.TODO(), act.Head, &aast); err != nil {
-		return address.Undef, aerrors.Escalate(err, fmt.Sprintf("failed to get account actor state for %s", addr))
+		return address.Undef, aerrors.Absorb(err, exitcode.SysErrInvalidParameters, fmt.Sprintf("failed to get account actor state for %s", addr))
 	}
 
 	return aast.Address, nil
@@ -100,6 +100,8 @@ func (vm *VM) makeRuntime(ctx context.Context, msg *types.Message, origin addres
 		gasAvailable:     msg.GasLimit,
 		numActorsCreated: nac,
 		pricelist:        PricelistByEpoch(vm.blockHeight),
+		allowInternal:    true,
+		callerValidated:  false,
 	}
 
 	rt.cst = &cbor.BasicIpldStore{
@@ -129,14 +131,13 @@ type VM struct {
 	cst         *cbor.BasicIpldStore
 	buf         *bufbstore.BufferedBS
 	blockHeight abi.ChainEpoch
-	blockMiner  address.Address
 	inv         *invoker
 	rand        Rand
 
 	Syscalls runtime.Syscalls
 }
 
-func NewVM(base cid.Cid, height abi.ChainEpoch, r Rand, maddr address.Address, cbs blockstore.Blockstore, syscalls runtime.Syscalls) (*VM, error) {
+func NewVM(base cid.Cid, height abi.ChainEpoch, r Rand, cbs blockstore.Blockstore, syscalls runtime.Syscalls) (*VM, error) {
 	buf := bufbstore.NewBufferedBstore(cbs)
 	cst := cbor.NewCborStore(buf)
 	state, err := state.LoadStateTree(cst, base)
@@ -150,7 +151,6 @@ func NewVM(base cid.Cid, height abi.ChainEpoch, r Rand, maddr address.Address, c
 		cst:         cst,
 		buf:         buf,
 		blockHeight: height,
-		blockMiner:  maddr,
 		inv:         NewInvoker(),
 		rand:        r, // TODO: Probably should be a syscall
 		Syscalls:    syscalls,
@@ -243,7 +243,7 @@ func checkMessage(msg *types.Message) error {
 
 func (vm *VM) ApplyImplicitMessage(ctx context.Context, msg *types.Message) (*ApplyRet, error) {
 	start := time.Now()
-	ret, actorErr, _ := vm.send(ctx, msg, nil, 0)
+	ret, actorErr, rt := vm.send(ctx, msg, nil, 0)
 	return &ApplyRet{
 		MessageReceipt: types.MessageReceipt{
 			ExitCode: exitcode.ExitCode(aerrors.RetCode(actorErr)),
@@ -251,7 +251,7 @@ func (vm *VM) ApplyImplicitMessage(ctx context.Context, msg *types.Message) (*Ap
 			GasUsed:  0,
 		},
 		ActorErr:           actorErr,
-		InternalExecutions: nil,
+		InternalExecutions: rt.internalExecutions,
 		Penalty:            types.NewInt(0),
 		Duration:           time.Since(start),
 	}, actorErr
@@ -414,10 +414,6 @@ func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (*ApplyRet,
 		Penalty:            types.NewInt(0),
 		Duration:           time.Since(start),
 	}, nil
-}
-
-func (vm *VM) SetBlockMiner(m address.Address) {
-	vm.blockMiner = m
 }
 
 func (vm *VM) ActorBalance(addr address.Address) (types.BigInt, aerrors.ActorError) {

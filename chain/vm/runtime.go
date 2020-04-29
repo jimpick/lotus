@@ -11,6 +11,7 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/abi/big"
 	"github.com/filecoin-project/specs-actors/actors/builtin"
 	sainit "github.com/filecoin-project/specs-actors/actors/builtin/init"
+	sapower "github.com/filecoin-project/specs-actors/actors/builtin/power"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
 	"github.com/filecoin-project/specs-actors/actors/runtime"
 	vmr "github.com/filecoin-project/specs-actors/actors/runtime"
@@ -23,6 +24,7 @@ import (
 	"go.opencensus.io/trace"
 	"golang.org/x/xerrors"
 
+	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/actors/aerrors"
 	"github.com/filecoin-project/lotus/chain/state"
 	"github.com/filecoin-project/lotus/chain/types"
@@ -50,6 +52,43 @@ type Runtime struct {
 
 	internalExecutions []*types.ExecutionResult
 	numActorsCreated   uint64
+	allowInternal      bool
+	callerValidated    bool
+}
+
+func (rt *Runtime) TotalFilCircSupply() abi.TokenAmount {
+	total := types.FromFil(build.TotalFilecoin)
+
+	rew, err := rt.state.GetActor(builtin.RewardActorAddr)
+	if err != nil {
+		rt.Abortf(exitcode.ErrIllegalState, "failed to get reward actor for computing total supply: %s", err)
+	}
+
+	burnt, err := rt.state.GetActor(builtin.BurntFundsActorAddr)
+	if err != nil {
+		rt.Abortf(exitcode.ErrIllegalState, "failed to get reward actor for computing total supply: %s", err)
+	}
+
+	market, err := rt.state.GetActor(builtin.StorageMarketActorAddr)
+	if err != nil {
+		rt.Abortf(exitcode.ErrIllegalState, "failed to get reward actor for computing total supply: %s", err)
+	}
+
+	power, err := rt.state.GetActor(builtin.StoragePowerActorAddr)
+	if err != nil {
+		rt.Abortf(exitcode.ErrIllegalState, "failed to get reward actor for computing total supply: %s", err)
+	}
+
+	total = types.BigSub(total, rew.Balance)
+	total = types.BigSub(total, burnt.Balance)
+	total = types.BigSub(total, market.Balance)
+
+	var st sapower.State
+	if err := rt.cst.Get(rt.ctx, power.Head, &st); err != nil {
+		rt.Abortf(exitcode.ErrIllegalState, "failed to get storage power state: %s", err)
+	}
+
+	return types.BigSub(total, st.TotalPledgeCollateral)
 }
 
 func (rt *Runtime) ResolveAddress(addr address.Address) (ret address.Address, ok bool) {
@@ -103,6 +142,11 @@ func (rs *Runtime) shimCall(f func() interface{}) (rval []byte, aerr aerrors.Act
 	}()
 
 	ret := f()
+
+	if !rs.callerValidated {
+		rs.Abortf(exitcode.SysErrorIllegalActor, "Caller MUST be validated during method execution")
+	}
+
 	switch ret := ret.(type) {
 	case []byte:
 		return ret, nil
@@ -126,6 +170,7 @@ func (rs *Runtime) Message() vmr.Message {
 }
 
 func (rs *Runtime) ValidateImmediateCallerAcceptAny() {
+	rs.abortIfAlreadyValidated()
 	return
 }
 
@@ -199,7 +244,7 @@ func (rt *Runtime) CreateActor(codeId cid.Cid, address address.Address) {
 	}
 }
 
-func (rt *Runtime) DeleteActor() {
+func (rt *Runtime) DeleteActor(addr address.Address) {
 	rt.ChargeGas(rt.Pricelist().OnDeleteActor())
 	act, err := rt.state.GetActor(rt.Message().Receiver())
 	if err != nil {
@@ -229,6 +274,7 @@ func (rs *Runtime) StartSpan(name string) vmr.TraceSpan {
 }
 
 func (rt *Runtime) ValidateImmediateCallerIs(as ...address.Address) {
+	rt.abortIfAlreadyValidated()
 	imm := rt.Message().Caller()
 
 	for _, a := range as {
@@ -253,6 +299,7 @@ func (rs *Runtime) AbortStateMsg(msg string) {
 }
 
 func (rt *Runtime) ValidateImmediateCallerType(ts ...cid.Cid) {
+	rt.abortIfAlreadyValidated()
 	callerCid, ok := rt.GetActorCodeCID(rt.Message().Caller())
 	if !ok {
 		panic(aerrors.Fatalf("failed to lookup code cid for caller"))
@@ -278,6 +325,9 @@ func (dwt *dumbWrapperType) Into(um vmr.CBORUnmarshaler) error {
 }
 
 func (rs *Runtime) Send(to address.Address, method abi.MethodNum, m vmr.CBORMarshaler, value abi.TokenAmount) (vmr.SendReturn, exitcode.ExitCode) {
+	if !rs.allowInternal {
+		rs.Abortf(exitcode.SysErrorIllegalActor, "runtime.Send() is currently disallowed")
+	}
 	var params []byte
 	if m != nil {
 		buf := new(bytes.Buffer)
@@ -370,20 +420,26 @@ func (ssh *shimStateHandle) Create(obj vmr.CBORMarshaler) {
 func (ssh *shimStateHandle) Readonly(obj vmr.CBORUnmarshaler) {
 	act, err := ssh.rs.state.GetActor(ssh.rs.Message().Receiver())
 	if err != nil {
-		ssh.rs.Abortf(exitcode.SysErrInternal, "failed to get actor for Readonly state: %s", err)
+		ssh.rs.Abortf(exitcode.SysErrorIllegalArgument, "failed to get actor for Readonly state: %s", err)
 	}
 	ssh.rs.Get(act.Head, obj)
 }
 
 func (ssh *shimStateHandle) Transaction(obj vmr.CBORer, f func() interface{}) interface{} {
+	if obj == nil {
+		ssh.rs.Abortf(exitcode.SysErrorIllegalActor, "Must not pass nil to Transaction()")
+	}
+
 	act, err := ssh.rs.state.GetActor(ssh.rs.Message().Receiver())
 	if err != nil {
-		ssh.rs.Abortf(exitcode.SysErrInternal, "failed to get actor for Readonly state: %s", err)
+		ssh.rs.Abortf(exitcode.SysErrorIllegalActor, "failed to get actor for Transaction: %s", err)
 	}
 	baseState := act.Head
 	ssh.rs.Get(baseState, obj)
 
+	ssh.rs.allowInternal = false
 	out := f()
+	ssh.rs.allowInternal = true
 
 	c := ssh.rs.Put(obj)
 
@@ -408,17 +464,17 @@ func (rt *Runtime) stateCommit(oldh, newh cid.Cid) aerrors.ActorError {
 	// TODO: we can make this more efficient in the future...
 	act, err := rt.state.GetActor(rt.Message().Receiver())
 	if err != nil {
-		rt.Abortf(exitcode.SysErrInternal, "failed to get actor to commit state: %s", err)
+		return aerrors.Escalate(err, "failed to get actor to commit state")
 	}
 
 	if act.Head != oldh {
-		rt.Abortf(exitcode.ErrIllegalState, "failed to update, inconsistent base reference")
+		return aerrors.Fatal("failed to update, inconsistent base reference")
 	}
 
 	act.Head = newh
 
 	if err := rt.state.SetActor(rt.Message().Receiver(), act); err != nil {
-		rt.Abortf(exitcode.SysErrInternal, "failed to set actor in commit state: %s", err)
+		return aerrors.Fatalf("failed to set actor in commit state: %s", err)
 	}
 
 	return nil
@@ -446,4 +502,11 @@ func (rt *Runtime) Pricelist() Pricelist {
 
 func (rt *Runtime) incrementNumActorsCreated() {
 	rt.numActorsCreated++
+}
+
+func (rt *Runtime) abortIfAlreadyValidated() {
+	if rt.callerValidated {
+		rt.Abortf(exitcode.SysErrorIllegalActor, "Method must validate caller identity exactly once")
+	}
+	rt.callerValidated = true
 }

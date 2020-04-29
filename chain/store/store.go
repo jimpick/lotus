@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"io"
+	"os"
 	"sync"
 
 	"github.com/filecoin-project/specs-actors/actors/crypto"
@@ -16,6 +17,7 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/runtime"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 
+	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/state"
 	"github.com/filecoin-project/lotus/chain/vm"
@@ -23,7 +25,6 @@ import (
 	"go.opencensus.io/stats"
 	"go.opencensus.io/trace"
 	"go.uber.org/multierr"
-	"go.uber.org/zap"
 
 	amt "github.com/filecoin-project/go-amt-ipld/v2"
 
@@ -89,16 +90,16 @@ func NewChainStore(bs bstore.Blockstore, ds dstore.Batching, vmcalls runtime.Sys
 		cs.pubLk.Lock()
 		defer cs.pubLk.Unlock()
 
-		notif := make([]*HeadChange, len(rev)+len(app))
+		notif := make([]*api.HeadChange, len(rev)+len(app))
 
 		for i, r := range rev {
-			notif[i] = &HeadChange{
+			notif[i] = &api.HeadChange{
 				Type: HCRevert,
 				Val:  r,
 			}
 		}
 		for i, r := range app {
-			notif[i+len(rev)] = &HeadChange{
+			notif[i+len(rev)] = &api.HeadChange{
 				Type: HCApply,
 				Val:  r,
 			}
@@ -165,19 +166,14 @@ const (
 	HCCurrent = "current"
 )
 
-type HeadChange struct {
-	Type string
-	Val  *types.TipSet
-}
-
-func (cs *ChainStore) SubHeadChanges(ctx context.Context) chan []*HeadChange {
+func (cs *ChainStore) SubHeadChanges(ctx context.Context) chan []*api.HeadChange {
 	cs.pubLk.Lock()
 	subch := cs.bestTips.Sub("headchange")
 	head := cs.GetHeaviestTipSet()
 	cs.pubLk.Unlock()
 
-	out := make(chan []*HeadChange, 16)
-	out <- []*HeadChange{{
+	out := make(chan []*api.HeadChange, 16)
+	out <- []*api.HeadChange{{
 		Type: HCCurrent,
 		Val:  head,
 	}}
@@ -197,7 +193,7 @@ func (cs *ChainStore) SubHeadChanges(ctx context.Context) chan []*HeadChange {
 					log.Warnf("head change sub is slow, has %d buffered entries", len(out))
 				}
 				select {
-				case out <- val.([]*HeadChange):
+				case out <- val.([]*api.HeadChange):
 				case <-ctx.Done():
 				}
 			case <-ctx.Done():
@@ -748,7 +744,7 @@ func (cs *ChainStore) readMsgMetaCids(mmc cid.Cid) ([]cid.Cid, []cid.Cid, error)
 	return blscids, secpkcids, nil
 }
 
-func (cs *ChainStore) GetPath(ctx context.Context, from types.TipSetKey, to types.TipSetKey) ([]*HeadChange, error) {
+func (cs *ChainStore) GetPath(ctx context.Context, from types.TipSetKey, to types.TipSetKey) ([]*api.HeadChange, error) {
 	fts, err := cs.LoadTipSet(from)
 	if err != nil {
 		return nil, xerrors.Errorf("loading from tipset %s: %w", from, err)
@@ -762,12 +758,12 @@ func (cs *ChainStore) GetPath(ctx context.Context, from types.TipSetKey, to type
 		return nil, xerrors.Errorf("error getting tipset branches: %w", err)
 	}
 
-	path := make([]*HeadChange, len(revert)+len(apply))
+	path := make([]*api.HeadChange, len(revert)+len(apply))
 	for i, r := range revert {
-		path[i] = &HeadChange{Type: HCRevert, Val: r}
+		path[i] = &api.HeadChange{Type: HCRevert, Val: r}
 	}
 	for j, i := 0, len(apply)-1; i >= 0; j, i = j+1, i-1 {
-		path[j+len(revert)] = &HeadChange{Type: HCApply, Val: apply[i]}
+		path[j+len(revert)] = &api.HeadChange{Type: HCApply, Val: apply[i]}
 	}
 	return path, nil
 }
@@ -894,7 +890,6 @@ func (cs *ChainStore) TryFillTipSet(ts *types.TipSet) (*FullTipSet, error) {
 }
 
 func DrawRandomness(rbase []byte, pers crypto.DomainSeparationTag, round abi.ChainEpoch, entropy []byte) ([]byte, error) {
-	log.Desugar().WithOptions(zap.AddCallerSkip(2)).Sugar().Warnw("DrawRandomness", "base", rbase, "dsep", pers, "round", round, "entropy", entropy)
 	h := blake2b.New256()
 	if err := binary.Write(h, binary.BigEndian, int64(pers)); err != nil {
 		return nil, xerrors.Errorf("deriving randomness: %w", err)
@@ -944,6 +939,10 @@ func (cs *ChainStore) GetTipsetByHeight(ctx context.Context, h abi.ChainEpoch, t
 		return nil, xerrors.Errorf("looking for tipset with height less than start point")
 	}
 
+	if h == ts.Height() {
+		return ts, nil
+	}
+
 	if ts.Height()-h > build.ForkLengthThreshold {
 		log.Warnf("expensive call to GetTipsetByHeight, seeking %d levels", ts.Height()-h)
 	}
@@ -956,6 +955,9 @@ func (cs *ChainStore) GetTipsetByHeight(ctx context.Context, h abi.ChainEpoch, t
 
 		if h > pts.Height() {
 			return ts, nil
+		}
+		if h == pts.Height() {
+			return pts, nil
 		}
 
 		ts = pts
@@ -1107,6 +1109,12 @@ func (cs *ChainStore) GetLatestBeaconEntry(ts *types.TipSet) (*types.BeaconEntry
 			return nil, xerrors.Errorf("failed to load parents when searching back for latest beacon entry: %w", err)
 		}
 		cur = next
+	}
+
+	if os.Getenv("LOTUS_IGNORE_DRAND") == "_yes_" {
+		return &types.BeaconEntry{
+			Data: []byte{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9},
+		}, nil
 	}
 
 	return nil, xerrors.Errorf("found NO beacon entries in the 20 blocks prior to given tipset")

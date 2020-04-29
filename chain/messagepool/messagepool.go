@@ -130,6 +130,7 @@ type Provider interface {
 	PutMessage(m types.ChainMsg) (cid.Cid, error)
 	PubSubPublish(string, []byte) error
 	StateGetActor(address.Address, *types.TipSet) (*types.Actor, error)
+	StateAccountKey(context.Context, address.Address, *types.TipSet) (address.Address, error)
 	MessagesForBlock(*types.BlockHeader) ([]*types.Message, []*types.SignedMessage, error)
 	MessagesForTipset(*types.TipSet) ([]types.ChainMsg, error)
 	LoadTipSet(tsk types.TipSetKey) (*types.TipSet, error)
@@ -159,6 +160,10 @@ func (mpp *mpoolProvider) PubSubPublish(k string, v []byte) error {
 
 func (mpp *mpoolProvider) StateGetActor(addr address.Address, ts *types.TipSet) (*types.Actor, error) {
 	return mpp.sm.GetActor(addr, ts)
+}
+
+func (mpp *mpoolProvider) StateAccountKey(ctx context.Context, addr address.Address, ts *types.TipSet) (address.Address, error) {
+	return mpp.sm.ResolveToKeyAddress(ctx, addr, ts)
 }
 
 func (mpp *mpoolProvider) MessagesForBlock(h *types.BlockHeader) ([]*types.Message, []*types.SignedMessage, error) {
@@ -470,22 +475,28 @@ func (mp *MessagePool) getStateBalance(addr address.Address, ts *types.TipSet) (
 	return act.Balance, nil
 }
 
-func (mp *MessagePool) PushWithNonce(addr address.Address, cb func(uint64) (*types.SignedMessage, error)) (*types.SignedMessage, error) {
+func (mp *MessagePool) PushWithNonce(ctx context.Context, addr address.Address, cb func(address.Address, uint64) (*types.SignedMessage, error)) (*types.SignedMessage, error) {
 	mp.curTsLk.Lock()
 	defer mp.curTsLk.Unlock()
 
 	mp.lk.Lock()
 	defer mp.lk.Unlock()
-	if addr.Protocol() == address.ID {
-		log.Warnf("Called pushWithNonce with ID address (%s) this might not be handled properly yet", addr)
+
+	fromKey := addr
+	if fromKey.Protocol() == address.ID {
+		var err error
+		fromKey, err = mp.api.StateAccountKey(ctx, fromKey, mp.curTs)
+		if err != nil {
+			return nil, xerrors.Errorf("resolving sender key: %w", err)
+		}
 	}
 
-	nonce, err := mp.getNonceLocked(addr, mp.curTs)
+	nonce, err := mp.getNonceLocked(fromKey, mp.curTs)
 	if err != nil {
 		return nil, xerrors.Errorf("get nonce locked failed: %w", err)
 	}
 
-	msg, err := cb(nonce)
+	msg, err := cb(fromKey, nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -810,4 +821,18 @@ func (mp *MessagePool) loadLocal() error {
 	}
 
 	return nil
+}
+
+const MinGasPrice = 0
+
+func (mp *MessagePool) EstimateGasPrice(ctx context.Context, nblocksincl uint64, sender address.Address, gaslimit int64, tsk types.TipSetKey) (types.BigInt, error) {
+	// TODO: something smarter obviously
+	switch nblocksincl {
+	case 0:
+		return types.NewInt(MinGasPrice + 2), nil
+	case 1:
+		return types.NewInt(MinGasPrice + 1), nil
+	default:
+		return types.NewInt(MinGasPrice), nil
+	}
 }

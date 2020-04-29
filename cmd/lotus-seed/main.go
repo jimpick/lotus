@@ -120,7 +120,7 @@ var preSealCmd = &cli.Command{
 		}
 		sectorSize := abi.SectorSize(sectorSizeInt)
 
-		rp, _, err := ffiwrapper.ProofTypeFromSectorSize(sectorSize)
+		rp, err := ffiwrapper.SealProofTypeFromSectorSize(sectorSize)
 		if err != nil {
 			return err
 		}
@@ -182,7 +182,7 @@ func mergeGenMiners(a, b genesis.Miner) genesis.Miner {
 	return genesis.Miner{
 		Owner:         a.Owner,
 		Worker:        a.Worker,
-		PeerId:        "",
+		PeerId:        a.PeerId,
 		MarketBalance: big.Zero(),
 		PowerBalance:  big.Zero(),
 		SectorSize:    a.SectorSize,

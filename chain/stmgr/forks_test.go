@@ -74,7 +74,7 @@ func (ta *testActor) Exports() []interface{} {
 }
 
 func (ta *testActor) Constructor(rt runtime.Runtime, params *adt.EmptyValue) *adt.EmptyValue {
-
+	rt.ValidateImmediateCallerAcceptAny()
 	rt.State().Create(&testActorState{11})
 	fmt.Println("NEW ACTOR ADDRESS IS: ", rt.Message().Receiver())
 
@@ -82,6 +82,7 @@ func (ta *testActor) Constructor(rt runtime.Runtime, params *adt.EmptyValue) *ad
 }
 
 func (ta *testActor) TestMethod(rt runtime.Runtime, params *adt.EmptyValue) *adt.EmptyValue {
+	rt.ValidateImmediateCallerAcceptAny()
 	var st testActorState
 	rt.State().Readonly(&st)
 
@@ -158,8 +159,8 @@ func TestForkHeightTriggers(t *testing.T) {
 	}
 
 	inv.Register(actcid, &testActor{}, &testActorState{})
-	sm.SetVMConstructor(func(c cid.Cid, h abi.ChainEpoch, r vm.Rand, a address.Address, b blockstore.Blockstore, s runtime.Syscalls) (*vm.VM, error) {
-		nvm, err := vm.NewVM(c, h, r, a, b, s)
+	sm.SetVMConstructor(func(c cid.Cid, h abi.ChainEpoch, r vm.Rand, b blockstore.Blockstore, s runtime.Syscalls) (*vm.VM, error) {
+		nvm, err := vm.NewVM(c, h, r, b, s)
 		if err != nil {
 			return nil, err
 		}
