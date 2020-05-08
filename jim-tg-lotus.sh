@@ -6,10 +6,10 @@ PARAMS=($@)
 
 NUM=${PARAMS[0]}
 
-if [ "$NUM" != "0" -a "$NUM" != "1" -a "$NUM" != "2" ]; then
-  echo Wrong value for NUM: $NUM
-  exit 1
-fi
+#if [ "$NUM" != "0" -a "$NUM" != "1" -a "$NUM" != "2" ]; then
+#  echo Wrong value for NUM: $NUM
+#  exit 1
+#fi
 
 URL=https://lotus.testground.ipfs.team/api/$NUM/testplan/.lotus/token
 
