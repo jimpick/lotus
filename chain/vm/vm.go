@@ -200,7 +200,7 @@ func (vm *VM) send(ctx context.Context, msg *types.Message, parent *Runtime,
 		if xerrors.Is(err, init_.ErrAddressNotFound) {
 			a, err := TryCreateAccountActor(rt, msg.To)
 			if err != nil {
-				return nil, aerrors.Absorb(err, 1, "could not create account"), rt
+				return nil, aerrors.Wrapf(err, "could not create account"), rt
 			}
 			toActor = a
 		} else {
@@ -360,19 +360,25 @@ func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (*ApplyRet,
 		return nil, xerrors.Errorf("[from=%s,to=%s,n=%d,m=%d,h=%d] fatal error: %w", msg.From, msg.To, msg.Nonce, msg.Method, vm.blockHeight, actorErr)
 	}
 
-	{
-		if rt == nil {
-			return nil, xerrors.Errorf("send returned nil runtime, send error was: %s", actorErr)
-		}
-		actorErr2 := rt.chargeGasSafe(rt.Pricelist().OnChainReturnValue(len(ret)))
-		if actorErr == nil {
-			//TODO: Ambigous what to do in this case
-			actorErr = actorErr2
-		}
-	}
-
 	if actorErr != nil {
 		log.Warnw("Send actor error", "from", msg.From, "to", msg.To, "nonce", msg.Nonce, "method", msg.Method, "height", vm.blockHeight, "error", fmt.Sprintf("%+v", actorErr))
+	}
+
+	if actorErr != nil && len(ret) != 0 {
+		// This should not happen, something is wonky
+		return nil, xerrors.Errorf("message invocation errored, but had a return value anyway: %w", actorErr)
+	}
+
+	if rt == nil {
+		return nil, xerrors.Errorf("send returned nil runtime, send error was: %s", actorErr)
+	}
+
+	if len(ret) != 0 {
+		// safely override actorErr since it must be nil
+		actorErr = rt.chargeGasSafe(rt.Pricelist().OnChainReturnValue(len(ret)))
+		if actorErr != nil {
+			ret = nil
+		}
 	}
 
 	var errcode exitcode.ExitCode

@@ -147,7 +147,7 @@ type FullNodeStruct struct {
 
 		MsigGetAvailableBalance func(context.Context, address.Address, types.TipSetKey) (types.BigInt, error) `perm:"read"`
 
-		MarketEnsureAvailable func(context.Context, address.Address, address.Address, types.BigInt) error `perm:"sign"`
+		MarketEnsureAvailable func(context.Context, address.Address, address.Address, types.BigInt) (cid.Cid, error) `perm:"sign"`
 
 		PaychGet                   func(ctx context.Context, from, to address.Address, ensureFunds types.BigInt) (*api.ChannelInfo, error)   `perm:"sign"`
 		PaychList                  func(context.Context) ([]address.Address, error)                                                          `perm:"read"`
@@ -225,6 +225,10 @@ type WorkerStruct struct {
 		SealCommit1    func(ctx context.Context, sector abi.SectorID, ticket abi.SealRandomness, seed abi.InteractiveSealRandomness, pieces []abi.PieceInfo, cids storage.SectorCids) (storage.Commit1Out, error) `perm:"admin"`
 		SealCommit2    func(context.Context, abi.SectorID, storage.Commit1Out) (storage.Proof, error)                                                                                                             `perm:"admin"`
 		FinalizeSector func(context.Context, abi.SectorID) error                                                                                                                                                  `perm:"admin"`
+
+		Fetch func(context.Context, abi.SectorID, stores.SectorFileType, bool) error `perm:"admin"`
+
+		Closing func(context.Context) (<-chan struct{}, error) `perm:"admin"`
 	}
 }
 
@@ -616,7 +620,7 @@ func (c *FullNodeStruct) MsigGetAvailableBalance(ctx context.Context, a address.
 	return c.Internal.MsigGetAvailableBalance(ctx, a, tsk)
 }
 
-func (c *FullNodeStruct) MarketEnsureAvailable(ctx context.Context, addr, wallet address.Address, amt types.BigInt) error {
+func (c *FullNodeStruct) MarketEnsureAvailable(ctx context.Context, addr, wallet address.Address, amt types.BigInt) (cid.Cid, error) {
 	return c.Internal.MarketEnsureAvailable(ctx, addr, wallet, amt)
 }
 
@@ -808,6 +812,14 @@ func (w *WorkerStruct) SealCommit2(ctx context.Context, sector abi.SectorID, c1o
 
 func (w *WorkerStruct) FinalizeSector(ctx context.Context, sector abi.SectorID) error {
 	return w.Internal.FinalizeSector(ctx, sector)
+}
+
+func (w *WorkerStruct) Fetch(ctx context.Context, id abi.SectorID, fileType stores.SectorFileType, b bool) error {
+	return w.Internal.Fetch(ctx, id, fileType, b)
+}
+
+func (w *WorkerStruct) Closing(ctx context.Context) (<-chan struct{}, error) {
+	return w.Internal.Closing(ctx)
 }
 
 var _ api.Common = &CommonStruct{}

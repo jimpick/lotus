@@ -235,8 +235,20 @@ func (rt *Runtime) NewActorAddress() address.Address {
 }
 
 func (rt *Runtime) CreateActor(codeId cid.Cid, address address.Address) {
+	if !builtin.IsBuiltinActor(codeId) {
+		rt.Abortf(exitcode.SysErrorIllegalArgument, "Can only create built-in actors.")
+	}
+
+	if builtin.IsSingletonActor(codeId) {
+		rt.Abortf(exitcode.SysErrorIllegalArgument, "Can only have one instance of singleton actors.")
+	}
+
+	_, err := rt.state.GetActor(address)
+	if err == nil {
+		rt.Abortf(exitcode.SysErrorIllegalArgument, "Actor address already exists")
+	}
+
 	rt.ChargeGas(rt.Pricelist().OnCreateActor())
-	var err error
 
 	err = rt.state.SetActor(address, &types.Actor{
 		Code:    codeId,
@@ -266,8 +278,6 @@ func (rt *Runtime) DeleteActor(addr address.Address) {
 		panic(aerrors.Fatalf("failed to delete actor: %s", err))
 	}
 }
-
-const GasVerifySignature = 50
 
 func (rs *Runtime) Syscalls() vmr.Syscalls {
 	// TODO: Make sure this is wrapped in something that charges gas for each of the calls

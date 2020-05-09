@@ -148,7 +148,7 @@ type FullNode interface {
 
 	MsigGetAvailableBalance(context.Context, address.Address, types.TipSetKey) (types.BigInt, error)
 
-	MarketEnsureAvailable(context.Context, address.Address, address.Address, types.BigInt) error
+	MarketEnsureAvailable(context.Context, address.Address, address.Address, types.BigInt) (cid.Cid, error)
 	// MarketFreeBalance
 
 	PaychGet(ctx context.Context, from, to address.Address, ensureFunds types.BigInt) (*ChannelInfo, error)
@@ -331,6 +331,7 @@ type StartDealParams struct {
 	Miner             address.Address
 	EpochPrice        types.BigInt
 	MinBlocksDuration uint64
+	DealStartEpoch    abi.ChainEpoch
 }
 
 type IpldObject struct {
@@ -389,6 +390,7 @@ type MiningBaseInfo struct {
 	WorkerKey       address.Address
 	SectorSize      abi.SectorSize
 	PrevBeaconEntry types.BeaconEntry
+	BeaconEntries   []types.BeaconEntry
 }
 
 type BlockTemplate struct {

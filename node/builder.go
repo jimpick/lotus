@@ -178,7 +178,7 @@ func libp2p() Option {
 		Override(ConnectionManagerKey, lp2p.ConnectionManager(50, 200, 20*time.Second, nil)),
 		Override(AutoNATSvcKey, lp2p.AutoNATService),
 
-		Override(new(*pubsub.PubSub), lp2p.GossipSub()),
+		Override(new(*pubsub.PubSub), lp2p.GossipSub(&config.Pubsub{})),
 
 		Override(PstoreAddSelfKeysKey, lp2p.PstoreAddSelfKeys),
 		Override(StartListeningKey, lp2p.StartListening(config.DefaultFullNode().Libp2p.ListenAddresses)),
@@ -354,6 +354,7 @@ func ConfigCommon(cfg *config.Common) Option {
 				cfg.Libp2p.ConnMgrHigh,
 				time.Duration(cfg.Libp2p.ConnMgrGrace),
 				cfg.Libp2p.ProtectedPeers)),
+			Override(new(*pubsub.PubSub), lp2p.GossipSub(&cfg.Pubsub)),
 
 			ApplyIf(func(s *Settings) bool { return len(cfg.Libp2p.BootstrapPeers) > 0 },
 				Override(new(dtypes.BootstrapPeers), modules.ConfigBootstrap(cfg.Libp2p.BootstrapPeers)),
@@ -370,11 +371,12 @@ func ConfigFullNode(c interface{}) Option {
 
 	return Options(
 		ConfigCommon(&cfg.Common),
+		If(cfg.Client.UseIpfs,
+			Override(new(dtypes.ClientBlockstore), modules.IpfsClientBlockstore),
+		),
+
 		If(cfg.Metrics.HeadNotifs,
 			Override(HeadMetricsKey, metrics.SendHeadNotifs(cfg.Metrics.Nickname)),
-		),
-		If(cfg.Metrics.PubsubTracing,
-			Override(new(*pubsub.PubSub), lp2p.GossipSub(lp2p.PubsubTracer())),
 		),
 	)
 }
@@ -406,9 +408,6 @@ func Repo(r repo.Repo) Option {
 		return Options(
 			Override(new(repo.LockedRepo), modules.LockedRepo(lr)), // module handles closing
 
-			ApplyIf(isType(repo.FullNode), ConfigFullNode(c)),
-			ApplyIf(isType(repo.StorageMiner), ConfigStorageMiner(c)),
-
 			Override(new(dtypes.MetadataDS), modules.Datastore),
 			Override(new(dtypes.ChainBlockstore), modules.ChainBlockstore),
 
@@ -423,6 +422,9 @@ func Repo(r repo.Repo) Option {
 			Override(new(types.KeyStore), modules.KeyStore),
 
 			Override(new(*dtypes.APIAlg), modules.APISecret),
+
+			ApplyIf(isType(repo.FullNode), ConfigFullNode(c)),
+			ApplyIf(isType(repo.StorageMiner), ConfigStorageMiner(c)),
 		)(settings)
 	}
 }

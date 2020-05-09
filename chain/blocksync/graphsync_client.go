@@ -13,8 +13,8 @@ import (
 	store "github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 
-	ipldfree "github.com/ipld/go-ipld-prime/impl/free"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	ipldselector "github.com/ipld/go-ipld-prime/traversal/selector"
 	selectorbuilder "github.com/ipld/go-ipld-prime/traversal/selector/builder"
 )
@@ -27,10 +27,10 @@ const (
 
 	// some constants for looking up tuple encoded struct fields
 	// field index of Parents field in a block header
-	blockIndexParentsField = 3
+	blockIndexParentsField = 5
 
 	// field index of Messages field in a block header
-	blockIndexMessagesField = 8
+	blockIndexMessagesField = 10
 
 	// field index of AMT node in AMT head
 	amtHeadNodeFieldIndex = 2
@@ -49,7 +49,7 @@ var amtSelector selectorbuilder.SelectorSpec
 
 func init() {
 	// builer for selectors
-	ssb := selectorbuilder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := selectorbuilder.NewSelectorSpecBuilder(basicnode.Style.Any)
 	// amt selector -- needed to selector through a messages AMT
 	amtSelector = ssb.ExploreIndex(amtHeadNodeFieldIndex,
 		ssb.ExploreRecursive(ipldselector.RecursionLimitDepth(int(amtRecursionDepth)),
@@ -62,7 +62,7 @@ func init() {
 
 func selectorForRequest(req *BlockSyncRequest) ipld.Node {
 	// builer for selectors
-	ssb := selectorbuilder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := selectorbuilder.NewSelectorSpecBuilder(basicnode.Style.Any)
 
 	bso := ParseBSOptions(req.Options)
 	if bso.IncludeMessages {
@@ -87,7 +87,7 @@ func selectorForRequest(req *BlockSyncRequest) ipld.Node {
 
 func firstTipsetSelector(req *BlockSyncRequest) ipld.Node {
 	// builer for selectors
-	ssb := selectorbuilder.NewSelectorSpecBuilder(ipldfree.NodeBuilder())
+	ssb := selectorbuilder.NewSelectorSpecBuilder(basicnode.Style.Any)
 
 	bso := ParseBSOptions(req.Options)
 	if bso.IncludeMessages {

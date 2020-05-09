@@ -88,7 +88,7 @@ type Syncer struct {
 func NewSyncer(sm *stmgr.StateManager, bsync *blocksync.BlockSync, connmgr connmgr.ConnManager, self peer.ID, beacon beacon.RandomBeacon, verifier ffiwrapper.Verifier) (*Syncer, error) {
 	gen, err := sm.ChainStore().GetGenesis()
 	if err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("getting genesis block: %w", err)
 	}
 
 	gent, err := types.NewTipSet([]*types.BlockHeader{gen})
@@ -505,12 +505,36 @@ func (syncer *Syncer) minerIsValid(ctx context.Context, maddr address.Address, b
 
 var ErrTemporal = errors.New("temporal error")
 
+func blockSanityChecks(h *types.BlockHeader) error {
+	if h.ElectionProof == nil {
+		return xerrors.Errorf("block cannot have nil election proof")
+	}
+
+	if h.Ticket == nil {
+		return xerrors.Errorf("block cannot have nil ticket")
+	}
+
+	if h.BlockSig == nil {
+		return xerrors.Errorf("block had nil signature")
+	}
+
+	if h.BLSAggregate == nil {
+		return xerrors.Errorf("block had nil bls aggregate signature")
+	}
+
+	return nil
+}
+
 // Should match up with 'Semantical Validation' in validation.md in the spec
 func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) error {
 	ctx, span := trace.StartSpan(ctx, "validateBlock")
 	defer span.End()
 	if build.InsecurePoStValidation {
 		log.Warn("insecure test validation is enabled, if you see this outside of a test, it is a severe bug!")
+	}
+
+	if err := blockSanityChecks(b.Header); err != nil {
+		return xerrors.Errorf("incoming header failed basic sanity checks: %w", err)
 	}
 
 	h := b.Header
@@ -538,9 +562,6 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) err
 	//nulls := h.Height - (baseTs.Height() + 1)
 
 	// fast checks first
-	if h.BlockSig == nil {
-		return xerrors.Errorf("block had nil signature")
-	}
 
 	now := uint64(time.Now().Unix())
 	if h.Timestamp > now+build.AllowableClockDrift {
@@ -617,8 +638,7 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) err
 			return xerrors.Errorf("could not draw randomness: %w", err)
 		}
 
-		err = gen.VerifyVRF(ctx, waddr, vrfBase, h.ElectionProof.VRFProof)
-		if err != nil {
+		if err := gen.VerifyVRF(ctx, waddr, vrfBase, h.ElectionProof.VRFProof); err != nil {
 			return xerrors.Errorf("validating block election proof failed: %w", err)
 		}
 
@@ -687,7 +707,7 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) err
 	})
 
 	wproofCheck := async.Err(func() error {
-		if err := syncer.VerifyWinningPoStProof(ctx, h, lbst, waddr); err != nil {
+		if err := syncer.VerifyWinningPoStProof(ctx, h, *prevBeacon, lbst, waddr); err != nil {
 			return xerrors.Errorf("invalid election post: %w", err)
 		}
 		return nil
@@ -730,7 +750,7 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) err
 	return merr
 }
 
-func (syncer *Syncer) VerifyWinningPoStProof(ctx context.Context, h *types.BlockHeader, lbst cid.Cid, waddr address.Address) error {
+func (syncer *Syncer) VerifyWinningPoStProof(ctx context.Context, h *types.BlockHeader, prevBeacon types.BeaconEntry, lbst cid.Cid, waddr address.Address) error {
 	if build.InsecurePoStValidation {
 		if len(h.WinPoStProof) == 0 {
 			return xerrors.Errorf("[TESTING] No winning post proof given")
@@ -742,13 +762,17 @@ func (syncer *Syncer) VerifyWinningPoStProof(ctx context.Context, h *types.Block
 		return xerrors.Errorf("[TESTING] winning post was invalid")
 	}
 
-	curTs, err := types.NewTipSet([]*types.BlockHeader{h})
-	if err != nil {
-		return err
+	buf := new(bytes.Buffer)
+	if err := h.Miner.MarshalCBOR(buf); err != nil {
+		return xerrors.Errorf("failed to marshal miner address: %w", err)
 	}
 
-	// TODO: use proper DST
-	rand, err := syncer.sm.ChainStore().GetRandomness(ctx, curTs.Cids(), crypto.DomainSeparationTag_WinningPoStChallengeSeed, h.Height-1, nil)
+	rbase := prevBeacon
+	if len(h.BeaconEntries) > 0 {
+		rbase = h.BeaconEntries[len(h.BeaconEntries)-1]
+	}
+
+	rand, err := store.DrawRandomness(rbase.Data, crypto.DomainSeparationTag_WinningPoStChallengeSeed, h.Height, buf.Bytes())
 	if err != nil {
 		return xerrors.Errorf("failed to get randomness for verifying winningPost proof: %w", err)
 	}
@@ -974,8 +998,7 @@ func (syncer *Syncer) collectHeaders(ctx context.Context, from *types.TipSet, to
 				return nil, xerrors.Errorf("tipset contained different number for beacon entires")
 			}
 			for i, be := range bh.BeaconEntries {
-				if targetBE[i].Round != be.Round || !bytes.Equal(targetBE[i].Data, be.Data) ||
-					targetBE[i].PrevRound() != be.PrevRound() {
+				if targetBE[i].Round != be.Round || !bytes.Equal(targetBE[i].Data, be.Data) {
 					// cannot mark bad, I think @Kubuxu
 					return nil, xerrors.Errorf("tipset contained different beacon entires")
 				}
