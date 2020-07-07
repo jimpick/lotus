@@ -1,4 +1,4 @@
-// +build debug 2k
+// +build debug 8m
 
 package build
 
@@ -11,24 +11,25 @@ import (
 )
 
 func init() {
-	power.ConsensusMinerMinPower = big.NewInt(2048)
+	power.ConsensusMinerMinPower = big.NewInt(8388608)
 	miner.SupportedProofTypes = map[abi.RegisteredSealProof]struct{}{
-		abi.RegisteredSealProof_StackedDrg2KiBV1: {},
+		abi.RegisteredSealProof_StackedDrg8MiBV1: {},
 	}
 	verifreg.MinVerifiedDealSize = big.NewInt(256)
 
-	BuildType |= Build2k
+	BuildType |= Build8m
 }
 
-const BlockDelaySecs = uint64(2)
+// Seconds
+const BlockDelaySecs = uint64(10)
 
-const PropagationDelaySecs = uint64(3)
+const PropagationDelaySecs = uint64(5)
 
 // SlashablePowerDelay is the number of epochs after ElectionPeriodStart, after
 // which the miner is slashed
 //
 // Epochs
-const SlashablePowerDelay = 20
+const SlashablePowerDelay = 400
 
 // Epochs
-const InteractivePoRepConfidence = 6
+const InteractivePoRepConfidence = 200
