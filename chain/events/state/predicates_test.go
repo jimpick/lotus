@@ -2,20 +2,16 @@ package state
 
 import (
 	"context"
+	"github.com/filecoin-project/go-bitfield"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/xerrors"
 
 	"github.com/ipfs/go-cid"
-	ds "github.com/ipfs/go-datastore"
-	ds_sync "github.com/ipfs/go-datastore/sync"
-	"github.com/ipfs/go-hamt-ipld"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
 	cbornode "github.com/ipfs/go-ipld-cbor"
 
 	"github.com/filecoin-project/go-address"
-	"github.com/filecoin-project/go-amt-ipld/v2"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/abi/big"
 	"github.com/filecoin-project/specs-actors/actors/builtin/market"
@@ -25,6 +21,7 @@ import (
 	tutils "github.com/filecoin-project/specs-actors/support/testing"
 
 	"github.com/filecoin-project/lotus/chain/types"
+	bstore "github.com/filecoin-project/lotus/lib/blockstore"
 )
 
 var dummyCid cid.Cid
@@ -68,8 +65,8 @@ func (m mockAPI) setActor(tsk types.TipSetKey, act *types.Actor) {
 
 func TestMarketPredicates(t *testing.T) {
 	ctx := context.Background()
-	bs := bstore.NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
-	store := cbornode.NewCborStore(bs)
+	bs := bstore.NewTemporarySync()
+	store := adt.WrapStore(ctx, cbornode.NewCborStore(bs))
 
 	oldDeal1 := &market.DealState{
 		SectorStartEpoch: 1,
@@ -283,8 +280,8 @@ func TestMarketPredicates(t *testing.T) {
 
 func TestMinerSectorChange(t *testing.T) {
 	ctx := context.Background()
-	bs := bstore.NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
-	store := cbornode.NewCborStore(bs)
+	bs := bstore.NewTemporarySync()
+	store := adt.WrapStore(ctx, cbornode.NewCborStore(bs))
 
 	nextID := uint64(0)
 	nextIDAddrF := func() address.Address {
@@ -293,12 +290,12 @@ func TestMinerSectorChange(t *testing.T) {
 	}
 
 	owner, worker := nextIDAddrF(), nextIDAddrF()
-	si0 := newSectorOnChainInfo(0, tutils.MakeCID("0"), big.NewInt(0), abi.ChainEpoch(0), abi.ChainEpoch(10))
-	si1 := newSectorOnChainInfo(1, tutils.MakeCID("1"), big.NewInt(1), abi.ChainEpoch(1), abi.ChainEpoch(11))
-	si2 := newSectorOnChainInfo(2, tutils.MakeCID("2"), big.NewInt(2), abi.ChainEpoch(2), abi.ChainEpoch(11))
+	si0 := newSectorOnChainInfo(0, tutils.MakeCID("0", &miner.SealedCIDPrefix), big.NewInt(0), abi.ChainEpoch(0), abi.ChainEpoch(10))
+	si1 := newSectorOnChainInfo(1, tutils.MakeCID("1", &miner.SealedCIDPrefix), big.NewInt(1), abi.ChainEpoch(1), abi.ChainEpoch(11))
+	si2 := newSectorOnChainInfo(2, tutils.MakeCID("2", &miner.SealedCIDPrefix), big.NewInt(2), abi.ChainEpoch(2), abi.ChainEpoch(11))
 	oldMinerC := createMinerState(ctx, t, store, owner, worker, []miner.SectorOnChainInfo{si0, si1, si2})
 
-	si3 := newSectorOnChainInfo(3, tutils.MakeCID("3"), big.NewInt(3), abi.ChainEpoch(3), abi.ChainEpoch(12))
+	si3 := newSectorOnChainInfo(3, tutils.MakeCID("3", &miner.SealedCIDPrefix), big.NewInt(3), abi.ChainEpoch(3), abi.ChainEpoch(12))
 	// 0 delete
 	// 1 extend
 	// 2 same
@@ -376,7 +373,7 @@ func mockTipset(minerAddr address.Address, timestamp uint64) (*types.TipSet, err
 	}})
 }
 
-func createMarketState(ctx context.Context, t *testing.T, store *cbornode.BasicIpldStore, deals map[abi.DealID]*market.DealState, props map[abi.DealID]*market.DealProposal) cid.Cid {
+func createMarketState(ctx context.Context, t *testing.T, store adt.Store, deals map[abi.DealID]*market.DealState, props map[abi.DealID]*market.DealProposal) cid.Cid {
 	dealRootCid := createDealAMT(ctx, t, store, deals)
 	propRootCid := createProposalAMT(ctx, t, store, props)
 
@@ -389,37 +386,37 @@ func createMarketState(ctx context.Context, t *testing.T, store *cbornode.BasicI
 	return stateC
 }
 
-func createEmptyMarketState(t *testing.T, store *cbornode.BasicIpldStore) *market.State {
-	emptyArrayCid, err := amt.NewAMT(store).Flush(context.TODO())
+func createEmptyMarketState(t *testing.T, store adt.Store) *market.State {
+	emptyArrayCid, err := adt.MakeEmptyArray(store).Root()
 	require.NoError(t, err)
-	emptyMap, err := store.Put(context.TODO(), hamt.NewNode(store, hamt.UseTreeBitWidth(5)))
+	emptyMap, err := adt.MakeEmptyMap(store).Root()
 	require.NoError(t, err)
 	return market.ConstructState(emptyArrayCid, emptyMap, emptyMap)
 }
 
-func createDealAMT(ctx context.Context, t *testing.T, store *cbornode.BasicIpldStore, deals map[abi.DealID]*market.DealState) cid.Cid {
-	root := amt.NewAMT(store)
+func createDealAMT(ctx context.Context, t *testing.T, store adt.Store, deals map[abi.DealID]*market.DealState) cid.Cid {
+	root := adt.MakeEmptyArray(store)
 	for dealID, dealState := range deals {
-		err := root.Set(ctx, uint64(dealID), dealState)
+		err := root.Set(uint64(dealID), dealState)
 		require.NoError(t, err)
 	}
-	rootCid, err := root.Flush(ctx)
+	rootCid, err := root.Root()
 	require.NoError(t, err)
 	return rootCid
 }
 
-func createProposalAMT(ctx context.Context, t *testing.T, store *cbornode.BasicIpldStore, props map[abi.DealID]*market.DealProposal) cid.Cid {
-	root := amt.NewAMT(store)
+func createProposalAMT(ctx context.Context, t *testing.T, store adt.Store, props map[abi.DealID]*market.DealProposal) cid.Cid {
+	root := adt.MakeEmptyArray(store)
 	for dealID, prop := range props {
-		err := root.Set(ctx, uint64(dealID), prop)
+		err := root.Set(uint64(dealID), prop)
 		require.NoError(t, err)
 	}
-	rootCid, err := root.Flush(ctx)
+	rootCid, err := root.Root()
 	require.NoError(t, err)
 	return rootCid
 }
 
-func createMinerState(ctx context.Context, t *testing.T, store *cbornode.BasicIpldStore, owner, worker address.Address, sectors []miner.SectorOnChainInfo) cid.Cid {
+func createMinerState(ctx context.Context, t *testing.T, store adt.Store, owner, worker address.Address, sectors []miner.SectorOnChainInfo) cid.Cid {
 	rootCid := createSectorsAMT(ctx, t, store, sectors)
 
 	state := createEmptyMinerState(ctx, t, store, owner, worker)
@@ -430,10 +427,10 @@ func createMinerState(ctx context.Context, t *testing.T, store *cbornode.BasicIp
 	return stateC
 }
 
-func createEmptyMinerState(ctx context.Context, t *testing.T, store *cbornode.BasicIpldStore, owner, worker address.Address) *miner.State {
-	emptyArrayCid, err := amt.NewAMT(store).Flush(context.TODO())
+func createEmptyMinerState(ctx context.Context, t *testing.T, store adt.Store, owner, worker address.Address) *miner.State {
+	emptyArrayCid, err := adt.MakeEmptyArray(store).Root()
 	require.NoError(t, err)
-	emptyMap, err := store.Put(context.TODO(), hamt.NewNode(store, hamt.UseTreeBitWidth(5)))
+	emptyMap, err := adt.MakeEmptyMap(store).Root()
 	require.NoError(t, err)
 
 	emptyDeadline, err := store.Put(context.TODO(), &miner.Deadline{
@@ -451,20 +448,24 @@ func createEmptyMinerState(ctx context.Context, t *testing.T, store *cbornode.Ba
 
 	minerInfo := emptyMap
 
-	state, err := miner.ConstructState(minerInfo, 123, emptyArrayCid, emptyMap, emptyDeadlinesCid)
+	emptyBitfield := bitfield.NewFromSet(nil)
+	emptyBitfieldCid, err := store.Put(context.Background(), emptyBitfield)
+	require.NoError(t, err)
+
+	state, err := miner.ConstructState(minerInfo, 123, emptyBitfieldCid, emptyArrayCid, emptyMap, emptyDeadlinesCid)
 	require.NoError(t, err)
 	return state
 
 }
 
-func createSectorsAMT(ctx context.Context, t *testing.T, store *cbornode.BasicIpldStore, sectors []miner.SectorOnChainInfo) cid.Cid {
-	root := amt.NewAMT(store)
+func createSectorsAMT(ctx context.Context, t *testing.T, store adt.Store, sectors []miner.SectorOnChainInfo) cid.Cid {
+	root := adt.MakeEmptyArray(store)
 	for _, sector := range sectors {
 		sector := sector
-		err := root.Set(ctx, uint64(sector.SectorNumber), &sector)
+		err := root.Set(uint64(sector.SectorNumber), &sector)
 		require.NoError(t, err)
 	}
-	rootCid, err := root.Flush(ctx)
+	rootCid, err := root.Root()
 	require.NoError(t, err)
 	return rootCid
 }
@@ -479,10 +480,12 @@ func newSectorOnChainInfo(sectorNo abi.SectorNumber, sealed cid.Cid, weight big.
 		DealIDs:      info.DealIDs,
 		Expiration:   info.Expiration,
 
-		Activation:         activation,
-		DealWeight:         weight,
-		VerifiedDealWeight: weight,
-		InitialPledge:      big.Zero(),
+		Activation:            activation,
+		DealWeight:            weight,
+		VerifiedDealWeight:    weight,
+		InitialPledge:         big.Zero(),
+		ExpectedDayReward:     big.Zero(),
+		ExpectedStoragePledge: big.Zero(),
 	}
 }
 

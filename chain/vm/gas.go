@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	GasStorageMulti = 1
+	GasStorageMulti = 1000
 	GasComputeMulti = 1
 )
 
@@ -85,10 +85,10 @@ type Pricelist interface {
 var prices = map[abi.ChainEpoch]Pricelist{
 	abi.ChainEpoch(0): &pricelistV0{
 		onChainMessageComputeBase:    137137,
-		onChainMessageStorageBase:    0, // TODO gas
-		onChainMessageStoragePerByte: 2, // TODO gas
+		onChainMessageStorageBase:    36,
+		onChainMessageStoragePerByte: 1,
 
-		onChainReturnValuePerByte: 8, // TODO gas
+		onChainReturnValuePerByte: 1,
 
 		sendBase:                97236,
 		sendTransferFunds:       96812,
@@ -97,11 +97,11 @@ var prices = map[abi.ChainEpoch]Pricelist{
 
 		ipldGetBase:    417230,
 		ipldPutBase:    396100,
-		ipldPutPerByte: 2, // TODO gas
+		ipldPutPerByte: 1,
 
 		createActorCompute: 750011,
-		createActorStorage: 500,  // TODO gas
-		deleteActor:        -500, // -createActorStorage
+		createActorStorage: 36 + 40,
+		deleteActor:        -(36 + 40), // -createActorStorage
 
 		verifySignature: map[crypto.SigType]int64{
 			crypto.SigTypeBLS:       219946580,
@@ -111,8 +111,22 @@ var prices = map[abi.ChainEpoch]Pricelist{
 		hashingBase:                  110685,
 		computeUnsealedSectorCidBase: 431890,
 		verifySealBase:               2000, // TODO gas , it VerifySeal syscall is not used
-		verifyPostBase:               2621447835,
-		verifyConsensusFault:         495422,
+		verifyPostLookup: map[abi.RegisteredPoStProof]scalingCost{
+			abi.RegisteredPoStProof_StackedDrgWindow512MiBV1: {
+				flat:  106102820,
+				scale: 10238878,
+			},
+			abi.RegisteredPoStProof_StackedDrgWindow32GiBV1: {
+				flat:  1165718059,
+				scale: 166657,
+			},
+			abi.RegisteredPoStProof_StackedDrgWindow64GiBV1: {
+				// TODO, for now the same as 32GiB
+				flat:  1165718059,
+				scale: 166657,
+			},
+		},
+		verifyConsensusFault: 495422,
 	},
 }
 

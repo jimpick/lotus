@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"github.com/filecoin-project/lotus/lib/adtutil"
 	"io"
 	"os"
 	"sync"
@@ -15,19 +14,18 @@ import (
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/specs-actors/actors/abi"
-	"github.com/filecoin-project/specs-actors/actors/runtime"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/state"
 	"github.com/filecoin-project/lotus/chain/vm"
 	"github.com/filecoin-project/lotus/journal"
+	bstore "github.com/filecoin-project/lotus/lib/blockstore"
 	"github.com/filecoin-project/lotus/metrics"
+
 	"go.opencensus.io/stats"
 	"go.opencensus.io/trace"
 	"go.uber.org/multierr"
-
-	amt "github.com/filecoin-project/go-amt-ipld/v2"
 
 	"github.com/filecoin-project/lotus/chain/types"
 
@@ -35,8 +33,6 @@ import (
 	block "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	dstore "github.com/ipfs/go-datastore"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	logging "github.com/ipfs/go-log/v2"
 	car "github.com/ipld/go-car"
@@ -84,10 +80,10 @@ type ChainStore struct {
 	mmCache *lru.ARCCache
 	tsCache *lru.ARCCache
 
-	vmcalls runtime.Syscalls
+	vmcalls vm.SyscallBuilder
 }
 
-func NewChainStore(bs bstore.Blockstore, ds dstore.Batching, vmcalls runtime.Syscalls) *ChainStore {
+func NewChainStore(bs bstore.Blockstore, ds dstore.Batching, vmcalls vm.SyscallBuilder) *ChainStore {
 	c, _ := lru.NewARC(2048)
 	tsc, _ := lru.NewARC(4096)
 	cs := &ChainStore{
@@ -659,7 +655,7 @@ func (cs *ChainStore) GetCMessage(c cid.Cid) (types.ChainMsg, error) {
 		return m, nil
 	}
 	if err != bstore.ErrNotFound {
-		log.Warn("GetCMessage: unexpected error getting unsigned message: %s", err)
+		log.Warnf("GetCMessage: unexpected error getting unsigned message: %s", err)
 	}
 
 	return cs.GetSignedMessage(c)
@@ -687,20 +683,25 @@ func (cs *ChainStore) GetSignedMessage(c cid.Cid) (*types.SignedMessage, error) 
 
 func (cs *ChainStore) readAMTCids(root cid.Cid) ([]cid.Cid, error) {
 	ctx := context.TODO()
-	bs := cbor.NewCborStore(cs.bs)
-	a, err := amt.LoadAMT(ctx, bs, root)
+	a, err := adt.AsArray(cs.Store(ctx), root)
 	if err != nil {
 		return nil, xerrors.Errorf("amt load: %w", err)
 	}
 
-	var cids []cid.Cid
-	for i := uint64(0); i < a.Count; i++ {
-		var c cbg.CborCid
-		if err := a.Get(ctx, i, &c); err != nil {
-			return nil, xerrors.Errorf("failed to load cid from amt: %w", err)
-		}
+	var (
+		cids    []cid.Cid
+		cborCid cbg.CborCid
+	)
+	if err := a.ForEach(&cborCid, func(i int64) error {
+		c := cid.Cid(cborCid)
+		cids = append(cids, c)
+		return nil
+	}); err != nil {
+		return nil, xerrors.Errorf("failed to traverse amt: %w", err)
+	}
 
-		cids = append(cids, cid.Cid(c))
+	if uint64(len(cids)) != a.Length() {
+		return nil, xerrors.Errorf("found %d cids, expected %d", len(cids), a.Length())
 	}
 
 	return cids, nil
@@ -848,15 +849,16 @@ func (cs *ChainStore) MessagesForBlock(b *types.BlockHeader) ([]*types.Message, 
 
 func (cs *ChainStore) GetParentReceipt(b *types.BlockHeader, i int) (*types.MessageReceipt, error) {
 	ctx := context.TODO()
-	bs := cbor.NewCborStore(cs.bs)
-	a, err := amt.LoadAMT(ctx, bs, b.ParentMessageReceipts)
+	a, err := adt.AsArray(cs.Store(ctx), b.ParentMessageReceipts)
 	if err != nil {
 		return nil, xerrors.Errorf("amt load: %w", err)
 	}
 
 	var r types.MessageReceipt
-	if err := a.Get(ctx, uint64(i), &r); err != nil {
+	if found, err := a.Get(uint64(i), &r); err != nil {
 		return nil, err
+	} else if !found {
+		return nil, xerrors.Errorf("failed to find receipt %d", i)
 	}
 
 	return &r, nil
@@ -894,15 +896,15 @@ func (cs *ChainStore) Blockstore() bstore.Blockstore {
 	return cs.bs
 }
 
-func ActorStore(ctx context.Context, bs blockstore.Blockstore) adt.Store {
-	return adtutil.NewStore(ctx, cbor.NewCborStore(bs))
+func ActorStore(ctx context.Context, bs bstore.Blockstore) adt.Store {
+	return adt.WrapStore(ctx, cbor.NewCborStore(bs))
 }
 
 func (cs *ChainStore) Store(ctx context.Context) adt.Store {
 	return ActorStore(ctx, cs.bs)
 }
 
-func (cs *ChainStore) VMSys() runtime.Syscalls {
+func (cs *ChainStore) VMSys() vm.SyscallBuilder {
 	return cs.vmcalls
 }
 
@@ -1017,7 +1019,7 @@ func (cs *ChainStore) GetTipsetByHeight(ctx context.Context, h abi.ChainEpoch, t
 	return cs.LoadTipSet(lbts.Parents())
 }
 
-func recurseLinks(bs blockstore.Blockstore, root cid.Cid, in []cid.Cid) ([]cid.Cid, error) {
+func recurseLinks(bs bstore.Blockstore, root cid.Cid, in []cid.Cid) ([]cid.Cid, error) {
 	if root.Prefix().Codec != cid.DagCBOR {
 		return in, nil
 	}

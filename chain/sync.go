@@ -13,8 +13,6 @@ import (
 	"github.com/Gurpartap/async"
 	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/go-cid"
-	dstore "github.com/ipfs/go-datastore"
-	bstore "github.com/ipfs/go-ipfs-blockstore"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/connmgr"
@@ -25,15 +23,14 @@ import (
 	"go.opencensus.io/trace"
 	"golang.org/x/xerrors"
 
-	bls "github.com/filecoin-project/filecoin-ffi"
 	"github.com/filecoin-project/go-address"
-	amt "github.com/filecoin-project/go-amt-ipld/v2"
 	"github.com/filecoin-project/sector-storage/ffiwrapper"
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/builtin"
 	"github.com/filecoin-project/specs-actors/actors/builtin/power"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
+	blst "github.com/supranational/blst/bindings/go"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
@@ -45,7 +42,9 @@ import (
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/chain/vm"
+	bstore "github.com/filecoin-project/lotus/lib/blockstore"
 	"github.com/filecoin-project/lotus/lib/sigs"
+	"github.com/filecoin-project/lotus/lib/sigs/bls"
 	"github.com/filecoin-project/lotus/metrics"
 )
 
@@ -256,15 +255,13 @@ func (syncer *Syncer) ValidateMsgMeta(fblk *types.FullBlock) error {
 	}
 
 	// Collect the CIDs of both types of messages separately: BLS and Secpk.
-	var bcids, scids []cbg.CBORMarshaler
+	var bcids, scids []cid.Cid
 	for _, m := range fblk.BlsMessages {
-		c := cbg.CborCid(m.Cid())
-		bcids = append(bcids, &c)
+		bcids = append(bcids, m.Cid())
 	}
 
 	for _, m := range fblk.SecpkMessages {
-		c := cbg.CborCid(m.Cid())
-		scids = append(scids, &c)
+		scids = append(scids, m.Cid())
 	}
 
 	// TODO: IMPORTANT(GARBAGE). These message puts and the msgmeta
@@ -354,19 +351,17 @@ func zipTipSetAndMessages(bs cbor.IpldStore, ts *types.TipSet, allbmsgs []*types
 		}
 
 		var smsgs []*types.SignedMessage
-		var smsgCids []cbg.CBORMarshaler
+		var smsgCids []cid.Cid
 		for _, m := range smi[bi] {
 			smsgs = append(smsgs, allsmsgs[m])
-			c := cbg.CborCid(allsmsgs[m].Cid())
-			smsgCids = append(smsgCids, &c)
+			smsgCids = append(smsgCids, allsmsgs[m].Cid())
 		}
 
 		var bmsgs []*types.Message
-		var bmsgCids []cbg.CBORMarshaler
+		var bmsgCids []cid.Cid
 		for _, m := range bmi[bi] {
 			bmsgs = append(bmsgs, allbmsgs[m])
-			c := cbg.CborCid(allbmsgs[m].Cid())
-			bmsgCids = append(bmsgCids, &c)
+			bmsgCids = append(bmsgCids, allbmsgs[m].Cid())
 		}
 
 		mrcid, err := computeMsgMeta(bs, bmsgCids, smsgCids)
@@ -392,19 +387,36 @@ func zipTipSetAndMessages(bs cbor.IpldStore, ts *types.TipSet, allbmsgs []*types
 
 // computeMsgMeta computes the root CID of the combined arrays of message CIDs
 // of both types (BLS and Secpk).
-func computeMsgMeta(bs cbor.IpldStore, bmsgCids, smsgCids []cbg.CBORMarshaler) (cid.Cid, error) {
-	ctx := context.TODO()
-	bmroot, err := amt.FromArray(ctx, bs, bmsgCids)
+func computeMsgMeta(bs cbor.IpldStore, bmsgCids, smsgCids []cid.Cid) (cid.Cid, error) {
+	store := adt.WrapStore(context.TODO(), bs)
+	bmArr := adt.MakeEmptyArray(store)
+	smArr := adt.MakeEmptyArray(store)
+
+	for i, m := range bmsgCids {
+		c := cbg.CborCid(m)
+		if err := bmArr.Set(uint64(i), &c); err != nil {
+			return cid.Undef, err
+		}
+	}
+
+	for i, m := range smsgCids {
+		c := cbg.CborCid(m)
+		if err := smArr.Set(uint64(i), &c); err != nil {
+			return cid.Undef, err
+		}
+	}
+
+	bmroot, err := bmArr.Root()
 	if err != nil {
 		return cid.Undef, err
 	}
 
-	smroot, err := amt.FromArray(ctx, bs, smsgCids)
+	smroot, err := smArr.Root()
 	if err != nil {
 		return cid.Undef, err
 	}
 
-	mrcid, err := bs.Put(ctx, &types.MsgMeta{
+	mrcid, err := store.Put(store.Context(), &types.MsgMeta{
 		BlsMessages:   bmroot,
 		SecpkMessages: smroot,
 	})
@@ -622,10 +634,8 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) (er
 
 	validationStart := build.Clock.Now()
 	defer func() {
-		dur := time.Since(validationStart)
-		durMilli := dur.Seconds() * float64(1000)
-		stats.Record(ctx, metrics.BlockValidationDurationMilliseconds.M(durMilli))
-		log.Infow("block validation", "took", dur, "height", b.Header.Height)
+		stats.Record(ctx, metrics.BlockValidationDurationMilliseconds.M(metrics.SinceInMilliseconds(validationStart)))
+		log.Infow("block validation", "took", time.Since(validationStart), "height", b.Header.Height)
 	}()
 
 	ctx, span := trace.StartSpan(ctx, "validateBlock")
@@ -727,6 +737,15 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) (er
 	winnerCheck := async.Err(func() error {
 		if h.ElectionProof.WinCount < 1 {
 			return xerrors.Errorf("block is not claiming to be a winner")
+		}
+
+		hp, err := stmgr.MinerHasMinPower(ctx, syncer.sm, h.Miner, lbts)
+		if err != nil {
+			return xerrors.Errorf("determining if miner has min power failed: %w", err)
+		}
+
+		if !hp {
+			return xerrors.New("block's miner does not meet minimum power threshold")
 		}
 
 		rBeacon := *prevBeacon
@@ -851,6 +870,7 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock) (er
 				"%d errors occurred:\n\t%s\n\n",
 				len(es), strings.Join(points, "\n\t"))
 		}
+		return mulErr
 	}
 
 	if err := syncer.store.MarkBlockAsValidated(ctx, b.Cid()); err != nil {
@@ -908,7 +928,7 @@ func (syncer *Syncer) VerifyWinningPoStProof(ctx context.Context, h *types.Block
 	}
 
 	if !ok {
-		log.Errorf("invalid winning post (%x; %v)", rand, sectors)
+		log.Errorf("invalid winning post (block: %s, %x; %v)", h.Cid(), rand, sectors)
 		return xerrors.Errorf("winning post was invalid")
 	}
 
@@ -919,7 +939,7 @@ func (syncer *Syncer) VerifyWinningPoStProof(ctx context.Context, h *types.Block
 func (syncer *Syncer) checkBlockMessages(ctx context.Context, b *types.FullBlock, baseTs *types.TipSet) error {
 	{
 		var sigCids []cid.Cid // this is what we get for people not wanting the marshalcbor method on the cid type
-		var pubks []bls.PublicKey
+		var pubks [][]byte
 
 		for _, m := range b.BlsMessages {
 			sigCids = append(sigCids, m.Cid())
@@ -992,18 +1012,21 @@ func (syncer *Syncer) checkBlockMessages(ctx context.Context, b *types.FullBlock
 		return nil
 	}
 
-	var blsCids []cbg.CBORMarshaler
+	store := adt.WrapStore(ctx, cst)
 
+	bmArr := adt.MakeEmptyArray(store)
 	for i, m := range b.BlsMessages {
 		if err := checkMsg(m); err != nil {
 			return xerrors.Errorf("block had invalid bls message at index %d: %w", i, err)
 		}
 
 		c := cbg.CborCid(m.Cid())
-		blsCids = append(blsCids, &c)
+		if err := bmArr.Set(uint64(i), &c); err != nil {
+			return xerrors.Errorf("failed to put bls message at index %d: %w", i, err)
+		}
 	}
 
-	var secpkCids []cbg.CBORMarshaler
+	smArr := adt.MakeEmptyArray(store)
 	for i, m := range b.SecpkMessages {
 		if err := checkMsg(m); err != nil {
 			return xerrors.Errorf("block had invalid secpk message at index %d: %w", i, err)
@@ -1021,17 +1044,19 @@ func (syncer *Syncer) checkBlockMessages(ctx context.Context, b *types.FullBlock
 		}
 
 		c := cbg.CborCid(m.Cid())
-		secpkCids = append(secpkCids, &c)
+		if err := smArr.Set(uint64(i), &c); err != nil {
+			return xerrors.Errorf("failed to put secpk message at index %d: %w", i, err)
+		}
 	}
 
-	bmroot, err := amt.FromArray(ctx, cst, blsCids)
+	bmroot, err := bmArr.Root()
 	if err != nil {
-		return xerrors.Errorf("failed to build amt from bls msg cids: %w", err)
+		return err
 	}
 
-	smroot, err := amt.FromArray(ctx, cst, secpkCids)
+	smroot, err := smArr.Root()
 	if err != nil {
-		return xerrors.Errorf("failed to build amt from bls msg cids: %w", err)
+		return err
 	}
 
 	mrcid, err := cst.Put(ctx, &types.MsgMeta{
@@ -1049,24 +1074,27 @@ func (syncer *Syncer) checkBlockMessages(ctx context.Context, b *types.FullBlock
 	return nil
 }
 
-func (syncer *Syncer) verifyBlsAggregate(ctx context.Context, sig *crypto.Signature, msgs []cid.Cid, pubks []bls.PublicKey) error {
+func (syncer *Syncer) verifyBlsAggregate(ctx context.Context, sig *crypto.Signature, msgs []cid.Cid, pubks [][]byte) error {
 	_, span := trace.StartSpan(ctx, "syncer.verifyBlsAggregate")
 	defer span.End()
 	span.AddAttributes(
 		trace.Int64Attribute("msgCount", int64(len(msgs))),
 	)
 
-	bmsgs := make([]bls.Message, len(msgs))
-	for i, m := range msgs {
-		bmsgs[i] = m.Bytes()
+	msgsS := make([]blst.Message, len(msgs))
+	for i := 0; i < len(msgs); i++ {
+		msgsS[i] = msgs[i].Bytes()
 	}
 
-	var bsig bls.Signature
-	copy(bsig[:], sig.Data)
-	if !bls.HashVerify(&bsig, bmsgs, pubks) {
+	if len(msgs) == 0 {
+		return nil
+	}
+
+	valid := new(bls.Signature).AggregateVerifyCompressed(sig.Data, pubks,
+		msgsS, []byte(bls.DST))
+	if !valid {
 		return xerrors.New("bls aggregate signature failed to verify")
 	}
-
 	return nil
 }
 
@@ -1372,8 +1400,7 @@ func (syncer *Syncer) iterFullTipsets(ctx context.Context, headers []*types.TipS
 
 		for bsi := 0; bsi < len(bstout); bsi++ {
 			// temp storage so we don't persist data we dont want to
-			ds := dstore.NewMapDatastore()
-			bs := bstore.NewBlockstore(ds)
+			bs := bstore.NewTemporary()
 			blks := cbor.NewCborStore(bs)
 
 			this := headers[i-bsi]

@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/multiformats/go-multiaddr"
 	"html/template"
+	"io"
 	"os"
 	"reflect"
 	"sort"
@@ -104,6 +106,15 @@ var stateMinerInfo = &cli.Command{
 		fmt.Printf("Worker:\t%s\n", mi.Worker)
 		fmt.Printf("PeerID:\t%s\n", mi.PeerId)
 		fmt.Printf("SectorSize:\t%s (%d)\n", types.SizeStr(types.NewInt(uint64(mi.SectorSize))), mi.SectorSize)
+		fmt.Printf("Multiaddrs: \t")
+		for _, addr := range mi.Multiaddrs {
+			a, err := multiaddr.NewMultiaddrBytes(addr)
+			if err != nil {
+				return xerrors.Errorf("undecodable listen address: %w", err)
+			}
+			fmt.Printf("%s ", a)
+		}
+		fmt.Println()
 
 		return nil
 	},
@@ -130,7 +141,15 @@ func LoadTipSet(ctx context.Context, cctx *cli.Context, api api.FullNode) (*type
 		return nil, nil
 	}
 
+	return ParseTipSetRef(ctx, api, tss)
+}
+
+func ParseTipSetRef(ctx context.Context, api api.FullNode, tss string) (*types.TipSet, error) {
 	if tss[0] == '@' {
+		if tss == "@head" {
+			return api.ChainHead(ctx)
+		}
+
 		var h uint64
 		if _, err := fmt.Sscanf(tss, "@%d", &h); err != nil {
 			return nil, xerrors.Errorf("parsing height tipset ref: %w", err)
@@ -874,7 +893,7 @@ var stateComputeStateCmd = &cli.Command{
 				return c.Code, nil
 			}
 
-			return computeStateHTMLTempl(ts, stout, getCode)
+			return ComputeStateHTMLTempl(os.Stdout, ts, stout, getCode)
 		}
 
 		fmt.Println("computed state cid: ", stout.Root)
@@ -1081,7 +1100,7 @@ type compStateHTMLIn struct {
 	Comp   *api.ComputeStateOutput
 }
 
-func computeStateHTMLTempl(ts *types.TipSet, o *api.ComputeStateOutput, getCode func(addr address.Address) (cid.Cid, error)) error {
+func ComputeStateHTMLTempl(w io.Writer, ts *types.TipSet, o *api.ComputeStateOutput, getCode func(addr address.Address) (cid.Cid, error)) error {
 	t, err := template.New("compute_state").Funcs(map[string]interface{}{
 		"GetCode":    getCode,
 		"GetMethod":  getMethod,
@@ -1114,7 +1133,7 @@ func computeStateHTMLTempl(ts *types.TipSet, o *api.ComputeStateOutput, getCode 
 		return err
 	}
 
-	return t.ExecuteTemplate(os.Stdout, "compute_state", &compStateHTMLIn{
+	return t.ExecuteTemplate(w, "compute_state", &compStateHTMLIn{
 		TipSet: ts,
 		Comp:   o,
 	})

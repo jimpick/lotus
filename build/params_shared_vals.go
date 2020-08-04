@@ -8,8 +8,6 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/builtin"
 	"github.com/filecoin-project/specs-actors/actors/builtin/miner"
-
-	"github.com/filecoin-project/lotus/node/modules/dtypes"
 )
 
 // /////
@@ -61,8 +59,8 @@ const WinningPoStSectorSetLookback = abi.ChainEpoch(10)
 // /////
 // Devnet settings
 
-const TotalFilecoin = uint64(2_000_000_000)
-const MiningRewardTotal = uint64(1_900_000_000)
+const FilBase = uint64(2_000_000_000)
+const FilAllocStorageMining = uint64(1_100_000_000)
 
 const FilecoinPrecision = uint64(1_000_000_000_000_000_000)
 
@@ -71,7 +69,7 @@ var InitialRewardBalance *big.Int
 // TODO: Move other important consts here
 
 func init() {
-	InitialRewardBalance = big.NewInt(int64(MiningRewardTotal))
+	InitialRewardBalance = big.NewInt(int64(FilAllocStorageMining))
 	InitialRewardBalance = InitialRewardBalance.Mul(InitialRewardBalance, big.NewInt(int64(FilecoinPrecision)))
 }
 
@@ -93,10 +91,6 @@ const VerifSigCacheSize = 32000
 const BlockMessageLimit = 512
 const BlockGasLimit = 7_500_000_000
 
-var DrandConfig = dtypes.DrandConfig{
-	Servers: []string{
-		"https://dev1.drand.sh",
-		"https://dev1.drand.sh",
-	},
-	ChainInfoJSON: `{"public_key":"88fdb6f22fcbe671bf91befbf723e159e5934f785168b437c03424cde6361cff5f5d3034390260f210438946f21d867d","period":30,"genesis_time":1589461830,"hash":"e89c9efe5af86ac79fc5d1c0ee0aaa64a81a97bb55d0acc4d2497cc2a0087afe","groupHash":"8f16f0105250b51f34e41fb845d09668b2e3db008dacb3c2d461f0bb2349b854"}`,
-}
+// Actor consts
+// TODO: Pull from actors when its made not private
+var MinDealDuration = abi.ChainEpoch(180 * builtin.EpochsInDay)

@@ -10,8 +10,6 @@ package build
 import (
 	"math/big"
 
-	"github.com/filecoin-project/lotus/node/modules/dtypes"
-
 	"github.com/filecoin-project/specs-actors/actors/abi"
 	"github.com/filecoin-project/specs-actors/actors/builtin"
 	"github.com/filecoin-project/specs-actors/actors/builtin/miner"
@@ -51,23 +49,17 @@ var (
 	TicketRandomnessLookback     = abi.ChainEpoch(1)
 	WinningPoStSectorSetLookback = abi.ChainEpoch(10)
 
-	TotalFilecoin     uint64 = 2_000_000_000
-	MiningRewardTotal uint64 = 1_400_000_000
+	FilBase               uint64 = 2_000_000_000
+	FilAllocStorageMining uint64 = 1_400_000_000
 
 	FilecoinPrecision uint64 = 1_000_000_000_000_000_000
 
 	InitialRewardBalance = func() *big.Int {
-		v := big.NewInt(int64(MiningRewardTotal))
+		v := big.NewInt(int64(FilAllocStorageMining))
 		v = v.Mul(v, big.NewInt(int64(FilecoinPrecision)))
 		return v
 	}()
-
-	DrandConfig = dtypes.DrandConfig{
-		Servers: []string{
-			"https://pl-eu.testnet.drand.sh",
-			"https://pl-us.testnet.drand.sh",
-			"https://pl-sin.testnet.drand.sh",
-		},
-		ChainInfoJSON: `{"public_key":"922a2e93828ff83345bae533f5172669a26c02dc76d6bf59c80892e12ab1455c229211886f35bb56af6d5bea981024df","period":25,"genesis_time":1590445175,"hash":"138a324aa6540f93d0dad002aa89454b1bec2b6e948682cde6bd4db40f4b7c9b"}`,
-	}
+	// Actor consts
+	// TODO: Pull from actors when its made not private
+	MinDealDuration = abi.ChainEpoch(180 * builtin.EpochsInDay)
 )

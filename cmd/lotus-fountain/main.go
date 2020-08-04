@@ -154,16 +154,16 @@ var runCmd = &cli.Command{
 			from:           from,
 			sendPerRequest: sendPerRequest,
 			limiter: NewLimiter(LimiterConfig{
-				TotalRate:   time.Second,
-				TotalBurst:  256,
-				IPRate:      time.Minute,
+				TotalRate:   500 * time.Millisecond,
+				TotalBurst:  build.BlockMessageLimit,
+				IPRate:      10 * time.Minute,
 				IPBurst:     5,
 				WalletRate:  15 * time.Minute,
 				WalletBurst: 2,
 			}),
 			minerLimiter: NewLimiter(LimiterConfig{
-				TotalRate:   time.Second,
-				TotalBurst:  256,
+				TotalRate:   500 * time.Millisecond,
+				TotalBurst:  build.BlockMessageLimit,
 				IPRate:      10 * time.Minute,
 				IPBurst:     2,
 				WalletRate:  1 * time.Hour,
@@ -281,7 +281,7 @@ func (h *handler) send(w http.ResponseWriter, r *http.Request) {
 		To:    to,
 
 		GasPrice: types.NewInt(0),
-		GasLimit: 100_000_000,
+		GasLimit: 0,
 	})
 	if err != nil {
 		w.WriteHeader(400)
@@ -355,7 +355,7 @@ func (h *handler) mkminer(w http.ResponseWriter, r *http.Request) {
 		To:    owner,
 
 		GasPrice: types.NewInt(0),
-		GasLimit: 100_000_000,
+		GasLimit: 0,
 	})
 	if err != nil {
 		w.WriteHeader(400)
@@ -391,7 +391,7 @@ func (h *handler) mkminer(w http.ResponseWriter, r *http.Request) {
 		Method: builtin.MethodsPower.CreateMiner,
 		Params: params,
 
-		GasLimit: 100_000_000,
+		GasLimit: 0,
 		GasPrice: types.NewInt(0),
 	}
 

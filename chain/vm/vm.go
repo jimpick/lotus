@@ -11,7 +11,6 @@ import (
 
 	block "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	cbor "github.com/ipfs/go-ipld-cbor"
 	logging "github.com/ipfs/go-log/v2"
 	mh "github.com/multiformats/go-multihash"
@@ -24,13 +23,13 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/builtin/account"
 	init_ "github.com/filecoin-project/specs-actors/actors/builtin/init"
 	"github.com/filecoin-project/specs-actors/actors/crypto"
-	"github.com/filecoin-project/specs-actors/actors/runtime"
 	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/actors/aerrors"
 	"github.com/filecoin-project/lotus/chain/state"
 	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/filecoin-project/lotus/lib/blockstore"
 	"github.com/filecoin-project/lotus/lib/bufbstore"
 )
 
@@ -115,7 +114,7 @@ func (vm *VM) makeRuntime(ctx context.Context, msg *types.Message, origin addres
 		Atlas:  vm.cst.Atlas,
 	}
 	rt.sys = pricedSyscalls{
-		under:     vm.Syscalls,
+		under:     vm.Syscalls(ctx, vm.cstate, rt.cst),
 		chargeGas: rt.chargeGasFunc(1),
 		pl:        rt.pricelist,
 	}
@@ -139,6 +138,8 @@ func (vm *UnsafeVM) MakeRuntime(ctx context.Context, msg *types.Message, origin 
 	return vm.VM.makeRuntime(ctx, msg, origin, originNonce, usedGas, nac)
 }
 
+type VestedCalculator func(context.Context, abi.ChainEpoch) (abi.TokenAmount, error)
+
 type VM struct {
 	cstate      *state.StateTree
 	base        cid.Cid
@@ -147,11 +148,12 @@ type VM struct {
 	blockHeight abi.ChainEpoch
 	inv         *Invoker
 	rand        Rand
+	vc          VestedCalculator
 
-	Syscalls runtime.Syscalls
+	Syscalls SyscallBuilder
 }
 
-func NewVM(base cid.Cid, height abi.ChainEpoch, r Rand, cbs blockstore.Blockstore, syscalls runtime.Syscalls) (*VM, error) {
+func NewVM(base cid.Cid, height abi.ChainEpoch, r Rand, cbs blockstore.Blockstore, syscalls SyscallBuilder, vestedCalc VestedCalculator) (*VM, error) {
 	buf := bufbstore.NewBufferedBstore(cbs)
 	cst := cbor.NewCborStore(buf)
 	state, err := state.LoadStateTree(cst, base)
@@ -167,6 +169,7 @@ func NewVM(base cid.Cid, height abi.ChainEpoch, r Rand, cbs blockstore.Blockstor
 		blockHeight: height,
 		inv:         NewInvoker(),
 		rand:        r, // TODO: Probably should be a syscall
+		vc:          vestedCalc,
 		Syscalls:    syscalls,
 	}, nil
 }
@@ -347,6 +350,7 @@ func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (*ApplyRet,
 					ExitCode: exitcode.SysErrSenderInvalid,
 					GasUsed:  0,
 				},
+				ActorErr: aerrors.Newf(exitcode.SysErrSenderInvalid, "actor not found: %s", msg.From),
 				Penalty:  minerPenaltyAmount,
 				Duration: time.Since(start),
 			}, nil
@@ -361,31 +365,34 @@ func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (*ApplyRet,
 				ExitCode: exitcode.SysErrSenderInvalid,
 				GasUsed:  0,
 			},
+			ActorErr: aerrors.Newf(exitcode.SysErrSenderInvalid, "send from not account actor: %s", fromActor.Code),
 			Penalty:  minerPenaltyAmount,
 			Duration: time.Since(start),
 		}, nil
 	}
 
-	// TODO: We should remove this, we might punish miners for no fault of their own
 	if msg.Nonce != fromActor.Nonce {
 		return &ApplyRet{
 			MessageReceipt: types.MessageReceipt{
 				ExitCode: exitcode.SysErrSenderStateInvalid,
 				GasUsed:  0,
 			},
+			ActorErr: aerrors.Newf(exitcode.SysErrSenderStateInvalid,
+				"actor nonce invalid: msg:%d != state:%d", msg.Nonce, fromActor.Nonce),
 			Penalty:  minerPenaltyAmount,
 			Duration: time.Since(start),
 		}, nil
 	}
 
 	gascost := types.BigMul(types.NewInt(uint64(msg.GasLimit)), msg.GasPrice)
-	totalCost := types.BigAdd(gascost, msg.Value)
-	if fromActor.Balance.LessThan(totalCost) {
+	if fromActor.Balance.LessThan(gascost) {
 		return &ApplyRet{
 			MessageReceipt: types.MessageReceipt{
 				ExitCode: exitcode.SysErrSenderStateInvalid,
 				GasUsed:  0,
 			},
+			ActorErr: aerrors.Newf(exitcode.SysErrSenderStateInvalid,
+				"actor balance less than needed: %s < %s", types.FIL(fromActor.Balance), types.FIL(gascost)),
 			Penalty:  minerPenaltyAmount,
 			Duration: time.Since(start),
 		}, nil
@@ -542,6 +549,9 @@ func linksForObj(blk block.Block, cb func(cid.Cid)) error {
 			return xerrors.Errorf("cbg.ScanForLinks: %w", err)
 		}
 		return nil
+	case cid.Raw:
+		// We implicitly have all children of raw blocks.
+		return nil
 	default:
 		return xerrors.Errorf("vm flush copy method only supports dag cbor")
 	}
@@ -591,17 +601,27 @@ func copyRec(from, to blockstore.Blockstore, root cid.Cid, cp func(block.Block) 
 			return
 		}
 
-		if link.Prefix().MhType == mh.IDENTITY || link.Prefix().Codec == cid.FilCommitmentSealed || link.Prefix().Codec == cid.FilCommitmentUnsealed {
+		prefix := link.Prefix()
+		if prefix.Codec == cid.FilCommitmentSealed || prefix.Codec == cid.FilCommitmentUnsealed {
 			return
 		}
 
-		has, err := to.Has(link)
-		if err != nil {
-			lerr = xerrors.Errorf("has: %w", err)
-			return
-		}
-		if has {
-			return
+		// We always have blocks inlined into CIDs, but we may not have their children.
+		if prefix.MhType == mh.IDENTITY {
+			// Unless the inlined block has no children.
+			if prefix.Codec == cid.Raw {
+				return
+			}
+		} else {
+			// If we have an object, we already have its children, skip the object.
+			has, err := to.Has(link)
+			if err != nil {
+				lerr = xerrors.Errorf("has: %w", err)
+				return
+			}
+			if has {
+				return
+			}
 		}
 
 		if err := copyRec(from, to, link, cp); err != nil {
@@ -655,6 +675,10 @@ func (vm *VM) Invoke(act *types.Actor, rt *Runtime, method abi.MethodNum, params
 
 func (vm *VM) SetInvoker(i *Invoker) {
 	vm.inv = i
+}
+
+func (vm *VM) GetVestedFunds(ctx context.Context) (abi.TokenAmount, error) {
+	return vm.vc(ctx, vm.blockHeight)
 }
 
 func (vm *VM) incrementNonce(addr address.Address) error {

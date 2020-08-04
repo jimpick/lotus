@@ -138,7 +138,7 @@ func (c *ClientNodeAdapter) AddFunds(ctx context.Context, addr address.Address, 
 		From:     addr,
 		Value:    amount,
 		GasPrice: types.NewInt(0),
-		GasLimit: 200_000_000,
+		GasLimit: 0,
 		Method:   builtin.MethodsMarket.AddBalance,
 	})
 	if err != nil {
@@ -236,6 +236,15 @@ func (c *ClientNodeAdapter) ValidatePublishedDeal(ctx context.Context, deal stor
 	}
 
 	return res.IDs[dealIdx], nil
+}
+
+func (c *ClientNodeAdapter) DealProviderCollateralBounds(ctx context.Context, size abi.PaddedPieceSize, isVerified bool) (abi.TokenAmount, abi.TokenAmount, error) {
+	bounds, err := c.StateDealProviderCollateralBounds(ctx, size, isVerified, types.EmptyTSK)
+	if err != nil {
+		return abi.TokenAmount{}, abi.TokenAmount{}, err
+	}
+
+	return bounds.Min, bounds.Max, nil
 }
 
 func (c *ClientNodeAdapter) OnDealSectorCommitted(ctx context.Context, provider address.Address, dealId abi.DealID, cb storagemarket.DealSectorCommittedCallback) error {
