@@ -3,7 +3,6 @@ package node
 import (
 	"context"
 	"errors"
-	"github.com/filecoin-project/lotus/markets/dealfilter"
 	"time"
 
 	logging "github.com/ipfs/go-log"
@@ -32,6 +31,7 @@ import (
 	"github.com/filecoin-project/lotus/chain/beacon"
 	"github.com/filecoin-project/lotus/chain/blocksync"
 	"github.com/filecoin-project/lotus/chain/gen"
+	"github.com/filecoin-project/lotus/chain/gen/slashfilter"
 	"github.com/filecoin-project/lotus/chain/market"
 	"github.com/filecoin-project/lotus/chain/messagepool"
 	"github.com/filecoin-project/lotus/chain/metrics"
@@ -44,6 +44,7 @@ import (
 	"github.com/filecoin-project/lotus/lib/peermgr"
 	_ "github.com/filecoin-project/lotus/lib/sigs/bls"
 	_ "github.com/filecoin-project/lotus/lib/sigs/secp"
+	"github.com/filecoin-project/lotus/markets/dealfilter"
 	"github.com/filecoin-project/lotus/markets/storageadapter"
 	"github.com/filecoin-project/lotus/miner"
 	"github.com/filecoin-project/lotus/node/config"
@@ -108,6 +109,7 @@ const (
 	HandleIncomingMessagesKey
 
 	RegisterClientValidatorKey
+	HandlePaymentChannelManagerKey
 
 	// miner
 	GetParamsKey
@@ -214,6 +216,7 @@ func Online() Option {
 		libp2p(),
 
 		// common
+		Override(new(*slashfilter.SlashFilter), modules.NewSlashFilter),
 
 		// Full node
 
@@ -274,7 +277,8 @@ func Online() Option {
 
 			Override(new(*paychmgr.Store), paychmgr.NewStore),
 			Override(new(*paychmgr.Manager), paychmgr.NewManager),
-			Override(new(*market.FundMgr), market.NewFundMgr),
+			Override(new(*market.FundMgr), market.StartFundManager),
+			Override(HandlePaymentChannelManagerKey, paychmgr.HandleManager),
 			Override(SettlePaymentChannelsKey, settler.SettlePaymentChannels),
 		),
 
