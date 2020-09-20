@@ -444,7 +444,7 @@ func (a *API) ClientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 }
 
 func (a *API) ClientTestRetrieve(ctx context.Context) error {
-	fmt.Println("Jim ClientTestRetrieve")
+	fmt.Println("Jim ClientTestRetrieve 1")
 	// Jim clientRetrieve order {bafk2bzaceadshj2ri6umifoo4bhwvzhqe3fe22hgslw76ovro4pre22zjmcbi <nil> 1024 2048 0 1048576 1048576 t3qmwpyrw7gyt7hwv6o3cpyaofn2bbm5plx6iq2auzn7ejxdtfkhfsc5w5p73frfkqdwmjhsc4pp3a3p5mxc7a t0100 {t01000 12D3KooWAFmk3wpTDiBa2ptfAmLk3uUehFjCpZW67uETGTaCefqn baga6ea4seaqcsohrq34fpozmnop5j2vkyvh64admiepnal6vqr5krb2gsxveuca}}
 	// Jim clientRetrieve ref &{/home/ubuntu/downloads/output-1600551826.txt false}
 
@@ -452,19 +452,23 @@ func (a *API) ClientTestRetrieve(ctx context.Context) error {
 	if err != nil {
 		panic(err)
 	}
-	clientAddress, err := address.NewFromString("t3qmwpyrw7gyt7hwv6o3cpyaofn2bbm5plx6iq2auzn7ejxdtfkhfsc5w5p73frfkqdwmjhsc4pp3a3p5mxc7a")
+	clientAddress, err := address.NewFromString("t3u7pw7s2sen24aurgfiz3virzvric3yzvutvozmss4aqiqhvqeiylqbupllqdjubkgkieepnjzukhezysq5ta")
 	if err != nil {
 		panic(err)
 	}
-	minerAddress, err := address.NewFromString("t0100")
+	ownerAddress, err := address.NewFromString("t0100")
 	if err != nil {
 		panic(err)
 	}
-	peerID, err := peer.Decode("12D3KooWAFmk3wpTDiBa2ptfAmLk3uUehFjCpZW67uETGTaCefqn")
+	peerID, err := peer.Decode("12D3KooWBaRnqqSRo2jmpkVzRjN1sFYox3sKrUJpjdStUTRpp2rR")
 	if err != nil {
 		panic(err)
 	}
 	pieceCID, err := cid.Decode("baga6ea4seaqcsohrq34fpozmnop5j2vkyvh64admiepnal6vqr5krb2gsxveuca")
+	if err != nil {
+		panic(err)
+	}
+	minerAddress, err := address.NewFromString("t01000")
 	if err != nil {
 		panic(err)
 	}
@@ -477,25 +481,33 @@ func (a *API) ClientTestRetrieve(ctx context.Context) error {
 		PaymentInterval:         1048576,
 		PaymentIntervalIncrease: 1048576,
 		Client:                  clientAddress,
-		Miner:                   minerAddress,
+		Miner:                   ownerAddress,
 		MinerPeer: retrievalmarket.RetrievalPeer{
 			Address:  minerAddress,
 			ID:       peerID,
 			PieceCID: &pieceCID,
 		},
 	}
-	ref := &api.FileRef{}
+	ref := &api.FileRef{
+		Path:  "/home/ubuntu/downloads/retrieve-test.txt",
+		IsCAR: false,
+	}
 	events := make(chan marketevents.RetrievalEvent)
 	go a.clientRetrieve(ctx, order, ref, events)
 
+	fmt.Println("Jim ClientTestRetrieve 2")
 	for {
 		select {
 		case evt, ok := <-events:
+			fmt.Printf("Jim ClientTestRetrieve evt %v %v\n", evt, ok)
 			if !ok { // done successfully
+				fmt.Println("Jim ClientTestRetrieve 3")
 				return nil
 			}
 
+			fmt.Println("Jim ClientTestRetrieve 4")
 			if evt.Err != "" {
+				fmt.Println("Jim ClientTestRetrieve 5")
 				return xerrors.Errorf("retrieval failed: %s", evt.Err)
 			}
 		case <-ctx.Done():

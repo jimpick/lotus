@@ -61,7 +61,7 @@ debug: GOFLAGS+=-tags=debug
 debug: lotus lotus-miner lotus-worker lotus-seed
 
 2k: GOFLAGS+=-tags=2k
-2k: lotus lotus-miner lotus-worker lotus-seed
+2k: lotus
 
 lotus: $(BUILD_DEPS)
 	rm -f lotus
