@@ -269,6 +269,8 @@ type FullNode interface {
 	ClientMinerQueryOffer(ctx context.Context, miner address.Address, root cid.Cid, piece *cid.Cid) (QueryOffer, error)
 	// ClientRetrieve initiates the retrieval of a file, as specified in the order.
 	ClientRetrieve(ctx context.Context, order RetrievalOrder, ref *FileRef) error
+	// ClientTestRetrieve initiates the retrieval of a file for profiling purposes.
+	ClientTestRetrieve(ctx context.Context) error
 	// ClientRetrieveWithEvents initiates the retrieval of a file, as specified in the order, and provides a channel
 	// of status updates.
 	ClientRetrieveWithEvents(ctx context.Context, order RetrievalOrder, ref *FileRef) (<-chan marketevents.RetrievalEvent, error)

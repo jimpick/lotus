@@ -56,7 +56,7 @@ import (
 
 // Blocks that are more than MaxHeightDrift epochs above
 // the theoretical max height based on systime are quickly rejected
-const MaxHeightDrift = 5
+const MaxHeightDrift = 500
 
 var (
 	// LocalIncoming is the _local_ pubsub (unrelated to libp2p pubsub) topic

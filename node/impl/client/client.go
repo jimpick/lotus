@@ -443,6 +443,67 @@ func (a *API) ClientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 	}
 }
 
+func (a *API) ClientTestRetrieve(ctx context.Context) error {
+	fmt.Println("Jim ClientTestRetrieve")
+	// Jim clientRetrieve order {bafk2bzaceadshj2ri6umifoo4bhwvzhqe3fe22hgslw76ovro4pre22zjmcbi <nil> 1024 2048 0 1048576 1048576 t3qmwpyrw7gyt7hwv6o3cpyaofn2bbm5plx6iq2auzn7ejxdtfkhfsc5w5p73frfkqdwmjhsc4pp3a3p5mxc7a t0100 {t01000 12D3KooWAFmk3wpTDiBa2ptfAmLk3uUehFjCpZW67uETGTaCefqn baga6ea4seaqcsohrq34fpozmnop5j2vkyvh64admiepnal6vqr5krb2gsxveuca}}
+	// Jim clientRetrieve ref &{/home/ubuntu/downloads/output-1600551826.txt false}
+
+	rootCID, err := cid.Decode("bafk2bzaceadshj2ri6umifoo4bhwvzhqe3fe22hgslw76ovro4pre22zjmcbi")
+	if err != nil {
+		panic(err)
+	}
+	clientAddress, err := address.NewFromString("t3qmwpyrw7gyt7hwv6o3cpyaofn2bbm5plx6iq2auzn7ejxdtfkhfsc5w5p73frfkqdwmjhsc4pp3a3p5mxc7a")
+	if err != nil {
+		panic(err)
+	}
+	minerAddress, err := address.NewFromString("t0100")
+	if err != nil {
+		panic(err)
+	}
+	peerID, err := peer.Decode("12D3KooWAFmk3wpTDiBa2ptfAmLk3uUehFjCpZW67uETGTaCefqn")
+	if err != nil {
+		panic(err)
+	}
+	pieceCID, err := cid.Decode("baga6ea4seaqcsohrq34fpozmnop5j2vkyvh64admiepnal6vqr5krb2gsxveuca")
+	if err != nil {
+		panic(err)
+	}
+	order := api.RetrievalOrder{
+		Root:                    rootCID,
+		Piece:                   nil,
+		Size:                    1024,
+		Total:                   big.NewInt(2048),
+		UnsealPrice:             big.Int{},
+		PaymentInterval:         1048576,
+		PaymentIntervalIncrease: 1048576,
+		Client:                  clientAddress,
+		Miner:                   minerAddress,
+		MinerPeer: retrievalmarket.RetrievalPeer{
+			Address:  minerAddress,
+			ID:       peerID,
+			PieceCID: &pieceCID,
+		},
+	}
+	ref := &api.FileRef{}
+	events := make(chan marketevents.RetrievalEvent)
+	go a.clientRetrieve(ctx, order, ref, events)
+
+	for {
+		select {
+		case evt, ok := <-events:
+			if !ok { // done successfully
+				return nil
+			}
+
+			if evt.Err != "" {
+				return xerrors.Errorf("retrieval failed: %s", evt.Err)
+			}
+		case <-ctx.Done():
+			return xerrors.Errorf("retrieval timed out")
+		}
+	}
+}
+
 func (a *API) ClientRetrieveWithEvents(ctx context.Context, order api.RetrievalOrder, ref *api.FileRef) (<-chan marketevents.RetrievalEvent, error) {
 	events := make(chan marketevents.RetrievalEvent)
 	go a.clientRetrieve(ctx, order, ref, events)
@@ -491,6 +552,8 @@ func readSubscribeEvents(ctx context.Context, subscribeEvents chan retrievalSubs
 func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref *api.FileRef, events chan marketevents.RetrievalEvent) {
 	defer close(events)
 
+	fmt.Printf("Jim clientRetrieve order %v\n", order)
+	fmt.Printf("Jim clientRetrieve ref %v\n", ref)
 	finish := func(e error) {
 		if e != nil {
 			events <- marketevents.RetrievalEvent{Err: e.Error(), FundsSpent: big.Zero()}
