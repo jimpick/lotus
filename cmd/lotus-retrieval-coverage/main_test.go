@@ -72,10 +72,11 @@ func TestMain(t *testing.T) {
 	app.Metadata["repoType"] = repo.FullNode
 
 	go func() {
-		args := []string{os.Args[0], "daemon"}
+		args := []string{os.Args[0], "daemon", "--genesis=/home/ubuntu/lotus/devgen.car", "--bootstrap=false"}
 		if err := app.Run(args); err != nil {
 			panic(err)
 		}
 	}()
-	time.Sleep(1 * time.Minute)
+	time.Sleep(2 * time.Minute)
+	// time.Sleep(10 * time.Second)
 }

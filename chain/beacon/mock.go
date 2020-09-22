@@ -38,6 +38,7 @@ func (mb *mockBeacon) entryForIndex(index uint64) types.BeaconEntry {
 }
 
 func (mb *mockBeacon) Entry(ctx context.Context, index uint64) <-chan Response {
+	panic("Jim mock beacon")
 	e := mb.entryForIndex(index)
 	out := make(chan Response, 1)
 	out <- Response{Entry: e}
