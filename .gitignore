@@ -41,3 +41,4 @@ bin/tmp/*
 scratchpad
 devgen.car
 coverage.*
+localnet.json
