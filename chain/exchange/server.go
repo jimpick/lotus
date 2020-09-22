@@ -41,6 +41,7 @@ func (s *server) HandleStream(stream inet.Stream) {
 
 	defer stream.Close() //nolint:errcheck
 
+	fmt.Println("Jim chain/exchange/server HandleStream")
 	var req Request
 	if err := cborutil.ReadCborRPC(bufio.NewReader(stream), &req); err != nil {
 		log.Warnf("failed to read block sync request: %s", err)

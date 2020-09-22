@@ -40,3 +40,4 @@ bin/tmp/*
 .idea
 scratchpad
 devgen.car
+coverage.*

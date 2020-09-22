@@ -61,7 +61,7 @@ import (
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
 	"github.com/filecoin-project/lotus/node/modules/lp2p"
-	"github.com/filecoin-project/lotus/node/modules/testing"
+	// "github.com/filecoin-project/lotus/node/modules/testing"
 	"github.com/filecoin-project/lotus/node/repo"
 	"github.com/filecoin-project/lotus/paychmgr"
 	"github.com/filecoin-project/lotus/paychmgr/settler"
@@ -563,6 +563,7 @@ func New(ctx context.Context, opts ...Option) (StopFunc, error) {
 
 // In-memory / testing
 
+/*
 func Test() Option {
 	return Options(
 		Unset(RunPeerMgrKey),
@@ -570,3 +571,4 @@ func Test() Option {
 		Override(new(beacon.Schedule), testing.RandomBeacon),
 	)
 }
+*/

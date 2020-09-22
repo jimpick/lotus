@@ -243,6 +243,7 @@ func (c *client) processResponse(req *Request, res *Response) (*validatedRespons
 
 // GetBlocks implements Client.GetBlocks(). Refer to the godocs there.
 func (c *client) GetBlocks(ctx context.Context, tsk types.TipSetKey, count int) ([]*types.TipSet, error) {
+	fmt.Println("Jim chain/exchange/client GetBlocks")
 	ctx, span := trace.StartSpan(ctx, "bsync.GetBlocks")
 	defer span.End()
 	if span.IsRecordingEvents() {
@@ -269,6 +270,7 @@ func (c *client) GetBlocks(ctx context.Context, tsk types.TipSetKey, count int) 
 // GetFullTipSet implements Client.GetFullTipSet(). Refer to the godocs there.
 func (c *client) GetFullTipSet(ctx context.Context, peer peer.ID, tsk types.TipSetKey) (*store.FullTipSet, error) {
 	// TODO: round robin through these peers on error
+	fmt.Println("Jim chain/exchange/client GetFullTipSet")
 
 	req := &Request{
 		Head:    tsk.Cids(),
@@ -288,6 +290,7 @@ func (c *client) GetFullTipSet(ctx context.Context, peer peer.ID, tsk types.TipS
 
 // GetChainMessages implements Client.GetChainMessages(). Refer to the godocs there.
 func (c *client) GetChainMessages(ctx context.Context, head *types.TipSet, length uint64) ([]*CompactedMessages, error) {
+	fmt.Println("Jim chain/exchange/client GetChainMessages")
 	ctx, span := trace.StartSpan(ctx, "GetChainMessages")
 	if span.IsRecordingEvents() {
 		span.AddAttributes(
