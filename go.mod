@@ -78,6 +78,7 @@ require (
 	github.com/ipfs/go-unixfs v0.2.4
 	github.com/ipfs/interface-go-ipfs-core v0.2.3
 	github.com/ipld/go-car v0.1.1-0.20200526133713-1c7508d55aae
+	github.com/ipld/go-car/car v0.1.0 // indirect
 	github.com/ipld/go-ipld-prime v0.0.4-0.20200828224805-5ff8c8b0b6ef
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/lib/pq v1.7.0
