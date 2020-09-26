@@ -44,6 +44,7 @@ const (
 	FullNode RepoType = iota
 	StorageMiner
 	Worker
+	RetrieveAPI
 )
 
 func defConfForType(t RepoType) interface{} {
@@ -53,6 +54,8 @@ func defConfForType(t RepoType) interface{} {
 	case StorageMiner:
 		return config.DefaultStorageMiner()
 	case Worker:
+		return &struct{}{}
+	case RetrieveAPI:
 		return &struct{}{}
 	default:
 		panic(fmt.Sprintf("unknown RepoType(%d)", int(t)))
