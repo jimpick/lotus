@@ -11,6 +11,7 @@ import (
 
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/node/repo"
 )
 
 const listenAddr = "127.0.0.1:1238"
@@ -23,17 +24,26 @@ var daemonCmd = &cli.Command{
 
 		ctx := context.Background()
 
+		r, err := repo.NewFS(cctx.String("repo"))
+		if err != nil {
+			return xerrors.Errorf("opening fs repo: %w", err)
+		}
+
+		if err := r.Init(repo.RetrieveAPI); err != nil && err != repo.ErrRepoExists {
+			return xerrors.Errorf("repo init error: %w", err)
+		}
+
 		// from lotus/daemon.go where it called node.New()
 		// stop, err := New(ctx,
-		_, err := New(ctx,
+		_, err = New(ctx,
 			RetrieveAPI(&api),
+			Repo(r),
 
 			/*
 				node.Override(new(dtypes.Bootstrapper), isBootstrapper),
 				node.Override(new(dtypes.ShutdownChan), shutdownChan),
 				node.Online(),
 				node.Repo(r),
-
 				genesis,
 
 				node.ApplyIf(func(s *node.Settings) bool { return cctx.IsSet("api") },
@@ -67,6 +77,14 @@ var daemonCmd = &cli.Command{
 func main() {
 	app := &cli.App{
 		Name: "lotus-retrieve-api-daemon",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "repo",
+				EnvVars: []string{"LOTUS_RETRIEVAL_PATH"},
+				Hidden:  true,
+				Value:   "~/.lotusretrieval", // TODO: Consider XDG_DATA_HOME
+			},
+		},
 		Commands: []*cli.Command{
 			daemonCmd,
 		},

@@ -5,6 +5,8 @@ import (
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/node/impl"
+	"github.com/filecoin-project/lotus/node/modules"
+	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/repo"
 	"go.uber.org/fx"
 	"golang.org/x/xerrors"
@@ -48,6 +50,44 @@ type Settings struct {
 	Online bool // Online option applied
 	Config bool // Config option applied
 
+}
+
+func Repo(r repo.Repo) Option {
+	return func(settings *Settings) error {
+		/*
+			lr, err := r.Lock(settings.nodeType)
+			if err != nil {
+				return err
+			}
+			c, err := lr.Config()
+			if err != nil {
+				return err
+			}
+		*/
+
+		return Options(
+			// Override(new(repo.LockedRepo), modules.LockedRepo(lr)), // module handles closing
+
+			// Override(new(dtypes.MetadataDS), modules.Datastore),
+			// Override(new(dtypes.ChainBlockstore), modules.ChainBlockstore),
+
+			// Override(new(dtypes.ClientImportMgr), modules.ClientImportMgr),
+			// Override(new(dtypes.ClientMultiDstore), modules.ClientMultiDatastore),
+
+			// Override(new(dtypes.ClientBlockstore), modules.ClientBlockstore),
+			Override(new(dtypes.ClientRetrievalStoreManager), modules.ClientRetrievalStoreManager),
+			// Override(new(ci.PrivKey), lp2p.PrivKey),
+			// Override(new(ci.PubKey), ci.PrivKey.GetPublic),
+			// Override(new(peer.ID), peer.IDFromPublicKey),
+
+			// Override(new(types.KeyStore), modules.KeyStore),
+
+			// Override(new(*dtypes.APIAlg), modules.APISecret),
+
+			// ApplyIf(isType(repo.FullNode), ConfigFullNode(c)),
+			// ApplyIf(isType(repo.StorageMiner), ConfigStorageMiner(c)),
+		)(settings)
+	}
 }
 
 // func FullAPI(out *api.Retrieve) Option {

@@ -12,7 +12,6 @@ import (
 	files "github.com/ipfs/go-ipfs-files"
 	unixfile "github.com/ipfs/go-unixfs/file"
 	"github.com/ipld/go-car"
-	"github.com/libp2p/go-libp2p-core/host"
 	"go.uber.org/fx"
 
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
@@ -23,24 +22,15 @@ import (
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/filecoin-project/lotus/node/impl/full"
-	"github.com/filecoin-project/lotus/node/impl/paych"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 )
 
 type API struct {
 	fx.In
 
-	full.WalletAPI
-	paych.PaychAPI
+	Retrieval rm.RetrievalClient
 
-	RetDiscovery rm.PeerResolver
-	Retrieval    rm.RetrievalClient
-
-	CombinedBstore    dtypes.ClientBlockstore // TODO: try to remove
 	RetrievalStoreMgr dtypes.ClientRetrievalStoreManager
-	DataTransfer      dtypes.ClientDataTransfer
-	Host              host.Host
 }
 
 func (a *API) ClientRetrieve(ctx context.Context, order api.RetrievalOrder, ref *api.FileRef) error {
