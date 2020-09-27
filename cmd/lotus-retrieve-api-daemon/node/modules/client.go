@@ -2,7 +2,6 @@ package modules
 
 import (
 	"context"
-	"time"
 
 	"github.com/filecoin-project/go-multistore"
 	"golang.org/x/xerrors"
@@ -13,14 +12,10 @@ import (
 	dtnet "github.com/filecoin-project/go-data-transfer/network"
 	dtgstransport "github.com/filecoin-project/go-data-transfer/transport/graphsync"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket/discovery"
 	retrievalimpl "github.com/filecoin-project/go-fil-markets/retrievalmarket/impl"
 	rmnet "github.com/filecoin-project/go-fil-markets/retrievalmarket/network"
-	"github.com/filecoin-project/go-fil-markets/storagemarket"
-	storageimpl "github.com/filecoin-project/go-fil-markets/storagemarket/impl"
 	"github.com/filecoin-project/go-fil-markets/storagemarket/impl/funds"
 	"github.com/filecoin-project/go-fil-markets/storagemarket/impl/requestvalidation"
-	smnet "github.com/filecoin-project/go-fil-markets/storagemarket/network"
 	"github.com/filecoin-project/go-storedcounter"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
@@ -110,28 +105,6 @@ type ClientDealFunds funds.DealFunds
 
 func NewClientDealFunds(ds dtypes.MetadataDS) (ClientDealFunds, error) {
 	return funds.NewDealFunds(ds, datastore.NewKey("/marketfunds/client"))
-}
-
-func StorageClient(lc fx.Lifecycle, h host.Host, ibs dtypes.ClientBlockstore, mds dtypes.ClientMultiDstore, r repo.LockedRepo, dataTransfer dtypes.ClientDataTransfer, discovery *discovery.Local, deals dtypes.ClientDatastore, scn storagemarket.StorageClientNode, dealFunds ClientDealFunds) (storagemarket.StorageClient, error) {
-	net := smnet.NewFromLibp2pHost(h)
-	c, err := storageimpl.NewClient(net, ibs, mds, dataTransfer, discovery, deals, scn, dealFunds, storageimpl.DealPollingInterval(time.Second))
-	if err != nil {
-		return nil, err
-	}
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			c.SubscribeToEvents(marketevents.StorageClientLogger)
-
-			evtType := journal.J.RegisterEventType("markets/storage/client", "state_change")
-			c.SubscribeToEvents(markets.StorageClientJournaler(evtType))
-
-			return c.Start(ctx)
-		},
-		OnStop: func(context.Context) error {
-			return c.Stop()
-		},
-	})
-	return c, nil
 }
 
 // RetrievalClient creates a new retrieval client attached to the client blockstore

@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	rmodules "github.com/filecoin-project/cmd/lotus-retrieve-api-daemon/node/modules"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/lotus/api"
+	rmodules "github.com/filecoin-project/lotus/cmd/lotus-retrieve-api-daemon/node/modules"
 	"github.com/filecoin-project/lotus/node/impl"
 	"github.com/filecoin-project/lotus/node/modules"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
