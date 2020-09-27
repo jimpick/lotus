@@ -80,9 +80,9 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "repo",
-				EnvVars: []string{"LOTUS_RETRIEVAL_PATH"},
+				EnvVars: []string{"LOTUS_RETRIEVE_PATH"},
 				Hidden:  true,
-				Value:   "~/.lotusretrieval", // TODO: Consider XDG_DATA_HOME
+				Value:   "~/.lotusretrieve", // TODO: Consider XDG_DATA_HOME
 			},
 		},
 		Commands: []*cli.Command{
