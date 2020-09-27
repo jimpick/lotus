@@ -8,27 +8,20 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"golang.org/x/xerrors"
 
-	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
-	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	files "github.com/ipfs/go-ipfs-files"
-	"github.com/ipfs/go-merkledag"
 	unixfile "github.com/ipfs/go-unixfs/file"
 	"github.com/ipld/go-car"
 	"github.com/libp2p/go-libp2p-core/host"
 	"go.uber.org/fx"
 
-	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	rm "github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/shared"
-	"github.com/filecoin-project/go-fil-markets/storagemarket"
-	"github.com/filecoin-project/go-padreader"
 
 	marketevents "github.com/filecoin-project/lotus/markets/loggers"
 
 	"github.com/filecoin-project/lotus/api"
-	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/node/impl/full"
 	"github.com/filecoin-project/lotus/node/impl/paych"
@@ -38,15 +31,11 @@ import (
 type API struct {
 	fx.In
 
-	full.ChainAPI
-	full.StateAPI
 	full.WalletAPI
 	paych.PaychAPI
 
-	SMDealClient storagemarket.StorageClient
 	RetDiscovery rm.PeerResolver
 	Retrieval    rm.RetrievalClient
-	Chain        *store.ChainStore
 
 	CombinedBstore    dtypes.ClientBlockstore // TODO: try to remove
 	RetrievalStoreMgr dtypes.ClientRetrievalStoreManager
@@ -124,18 +113,20 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 		}
 	}
 
-	if order.MinerPeer.ID == "" {
-		mi, err := a.StateMinerInfo(ctx, order.Miner, types.EmptyTSK)
-		if err != nil {
-			finish(err)
-			return
-		}
+	/*
+		if order.MinerPeer.ID == "" {
+			mi, err := a.StateMinerInfo(ctx, order.Miner, types.EmptyTSK)
+			if err != nil {
+				finish(err)
+				return
+			}
 
-		order.MinerPeer = retrievalmarket.RetrievalPeer{
-			ID:      *mi.PeerId,
-			Address: order.Miner,
+			order.MinerPeer = retrievalmarket.RetrievalPeer{
+				ID:      *mi.PeerId,
+				Address: order.Miner,
+			}
 		}
-	}
+	*/
 
 	if order.Size == 0 {
 		finish(xerrors.Errorf("cannot make retrieval deal for zero bytes"))
@@ -239,49 +230,4 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 	}
 	finish(files.WriteTo(file, ref.Path))
 	return
-}
-
-type lenWriter int64
-
-func (w *lenWriter) Write(p []byte) (n int, err error) {
-	*w += lenWriter(len(p))
-	return len(p), nil
-}
-
-func (a *API) ClientDealSize(ctx context.Context, root cid.Cid) (api.DataSize, error) {
-	dag := merkledag.NewDAGService(blockservice.New(a.CombinedBstore, offline.Exchange(a.CombinedBstore)))
-
-	w := lenWriter(0)
-
-	err := car.WriteCar(ctx, dag, []cid.Cid{root}, &w)
-	if err != nil {
-		return api.DataSize{}, err
-	}
-
-	up := padreader.PaddedSize(uint64(w))
-
-	return api.DataSize{
-		PayloadSize: int64(w),
-		PieceSize:   up.Padded(),
-	}, nil
-}
-
-func newDealInfo(v storagemarket.ClientDeal) api.DealInfo {
-	return api.DealInfo{
-		ProposalCid:   v.ProposalCid,
-		DataRef:       v.DataRef,
-		State:         v.State,
-		Message:       v.Message,
-		Provider:      v.Proposal.Provider,
-		PieceCID:      v.Proposal.PieceCID,
-		Size:          uint64(v.Proposal.PieceSize.Unpadded()),
-		PricePerEpoch: v.Proposal.StoragePricePerEpoch,
-		Duration:      uint64(v.Proposal.Duration()),
-		DealID:        v.DealID,
-		CreationTime:  v.CreationTime.Time(),
-	}
-}
-
-func (a *API) ClientRetrieveTryRestartInsufficientFunds(ctx context.Context, paymentChannel address.Address) error {
-	return a.Retrieval.TryRestartInsufficientFunds(paymentChannel)
 }
