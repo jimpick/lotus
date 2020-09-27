@@ -3,13 +3,24 @@ package node
 import (
 	"context"
 	"errors"
+	"time"
+
+	ci "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peerstore"
+	"github.com/libp2p/go-libp2p-core/routing"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
+	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/chain/types"
 	rmodules "github.com/filecoin-project/lotus/cmd/lotus-retrieve-api-daemon/node/modules"
 	"github.com/filecoin-project/lotus/node/impl"
 	"github.com/filecoin-project/lotus/node/modules"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
+	"github.com/filecoin-project/lotus/node/modules/lp2p"
 	"github.com/filecoin-project/lotus/node/repo"
 	"go.uber.org/fx"
 	"golang.org/x/xerrors"
@@ -23,12 +34,31 @@ type special struct{ id int }
 
 type invoke int
 
+//nolint:golint
+var (
+	DefaultTransportsKey = special{0}  // Libp2p option
+	DiscoveryHandlerKey  = special{2}  // Private type
+	AddrsFactoryKey      = special{3}  // Libp2p option
+	SmuxTransportKey     = special{4}  // Libp2p option
+	RelayKey             = special{5}  // Libp2p option
+	SecurityKey          = special{6}  // Libp2p option
+	BaseRoutingKey       = special{7}  // fx groups + multiret
+	NatPortMapKey        = special{8}  // Libp2p option
+	ConnectionManagerKey = special{9}  // Libp2p option
+	AutoNATSvcKey        = special{10} // Libp2p option
+	BandwidthReporterKey = special{11} // Libp2p option
+)
+
 // Invokes are called in the order they are defined.
 //nolint:golint
 const (
 	// InitJournal at position 0 initializes the journal global var as soon as
 	// the system starts, so that it's available for all other components.
 	InitJournalKey = invoke(iota)
+
+	// libp2p
+
+	PstoreAddSelfKeysKey
 
 	// daemon
 	ExtractApiKey
@@ -57,11 +87,11 @@ type Settings struct {
 
 func Repo(r repo.Repo) Option {
 	return func(settings *Settings) error {
+		lr, err := r.Lock(settings.nodeType)
+		if err != nil {
+			return err
+		}
 		/*
-			lr, err := r.Lock(settings.nodeType)
-			if err != nil {
-				return err
-			}
 			c, err := lr.Config()
 			if err != nil {
 				return err
@@ -69,7 +99,7 @@ func Repo(r repo.Repo) Option {
 		*/
 
 		return Options(
-			// Override(new(repo.LockedRepo), modules.LockedRepo(lr)), // module handles closing
+			Override(new(repo.LockedRepo), modules.LockedRepo(lr)), // module handles closing
 
 			// Override(new(dtypes.MetadataDS), modules.Datastore),
 			// Override(new(dtypes.ChainBlockstore), modules.ChainBlockstore),
@@ -79,11 +109,11 @@ func Repo(r repo.Repo) Option {
 
 			// Override(new(dtypes.ClientBlockstore), modules.ClientBlockstore),
 			Override(new(dtypes.ClientRetrievalStoreManager), rmodules.ClientRetrievalStoreManager),
-			// Override(new(ci.PrivKey), lp2p.PrivKey),
-			// Override(new(ci.PubKey), ci.PrivKey.GetPublic),
-			// Override(new(peer.ID), peer.IDFromPublicKey),
+			Override(new(ci.PrivKey), lp2p.PrivKey),
+			Override(new(ci.PubKey), ci.PrivKey.GetPublic),
+			Override(new(peer.ID), peer.IDFromPublicKey),
 
-			// Override(new(types.KeyStore), modules.KeyStore),
+			Override(new(types.KeyStore), modules.KeyStore),
 
 			// Override(new(*dtypes.APIAlg), modules.APISecret),
 
@@ -91,6 +121,46 @@ func Repo(r repo.Repo) Option {
 			// ApplyIf(isType(repo.StorageMiner), ConfigStorageMiner(c)),
 		)(settings)
 	}
+}
+
+func libp2p() Option {
+	return Options(
+		Override(new(peerstore.Peerstore), pstoremem.NewPeerstore),
+
+		Override(DefaultTransportsKey, lp2p.DefaultTransports),
+
+		Override(new(lp2p.RawHost), lp2p.Host),
+		Override(new(host.Host), lp2p.RoutedHost),
+		Override(new(lp2p.BaseIpfsRouting), lp2p.DHTRouting(dht.ModeAuto)),
+
+		Override(DiscoveryHandlerKey, lp2p.DiscoveryHandler),
+		Override(AddrsFactoryKey, lp2p.AddrsFactory(nil, nil)),
+		Override(SmuxTransportKey, lp2p.SmuxTransport(true)),
+		Override(RelayKey, lp2p.NoRelay()),
+		Override(SecurityKey, lp2p.Security(true, false)),
+
+		Override(BaseRoutingKey, lp2p.BaseRouting),
+		Override(new(routing.Routing), lp2p.Routing),
+
+		Override(NatPortMapKey, lp2p.NatPortMap),
+		Override(BandwidthReporterKey, lp2p.BandwidthCounter),
+
+		Override(ConnectionManagerKey, lp2p.ConnectionManager(50, 200, 20*time.Second, nil)),
+		Override(AutoNATSvcKey, lp2p.AutoNATService),
+
+		/*
+			Override(new(*dtypes.ScoreKeeper), lp2p.ScoreKeeper),
+			Override(new(*pubsub.PubSub), lp2p.GossipSub),
+			Override(new(*config.Pubsub), func(bs dtypes.Bootstrapper) *config.Pubsub {
+				return &config.Pubsub{
+					Bootstrapper: bool(bs),
+				}
+			}),
+		*/
+
+		Override(PstoreAddSelfKeysKey, lp2p.PstoreAddSelfKeys),
+		// Override(StartListeningKey, lp2p.StartListening(config.DefaultFullNode().Libp2p.ListenAddresses)),
+	)
 }
 
 // Online sets up basic libp2p node
@@ -103,9 +173,9 @@ func Online() Option {
 			Error(errors.New("the Online option must be set before Config option")),
 		),
 
-		/*
-			libp2p(),
+		libp2p(),
 
+		/*
 			// common
 			Override(new(*slashfilter.SlashFilter), modules.NewSlashFilter),
 
