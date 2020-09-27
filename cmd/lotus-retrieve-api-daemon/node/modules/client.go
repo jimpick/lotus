@@ -14,7 +14,6 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	retrievalimpl "github.com/filecoin-project/go-fil-markets/retrievalmarket/impl"
 	rmnet "github.com/filecoin-project/go-fil-markets/retrievalmarket/network"
-	"github.com/filecoin-project/go-fil-markets/storagemarket/impl/funds"
 	"github.com/filecoin-project/go-fil-markets/storagemarket/impl/requestvalidation"
 	"github.com/filecoin-project/go-storedcounter"
 	"github.com/ipfs/go-datastore"
@@ -104,11 +103,13 @@ func NewClientDatastore(ds dtypes.MetadataDS) dtypes.ClientDatastore {
 }
 */
 
+/*
 type ClientDealFunds funds.DealFunds
 
 func NewClientDealFunds(ds dtypes.MetadataDS) (ClientDealFunds, error) {
 	return funds.NewDealFunds(ds, datastore.NewKey("/marketfunds/client"))
 }
+*/
 
 // RetrievalClient creates a new retrieval client attached to the client blockstore
 func RetrievalClient(lc fx.Lifecycle, h host.Host, mds dtypes.ClientMultiDstore, dt dtypes.ClientDataTransfer, payAPI payapi.PaychAPI, resolver retrievalmarket.PeerResolver, ds dtypes.MetadataDS, chainAPI full.ChainAPI, stateAPI full.StateAPI) (retrievalmarket.RetrievalClient, error) {
