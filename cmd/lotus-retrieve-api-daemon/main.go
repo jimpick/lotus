@@ -38,6 +38,7 @@ var daemonCmd = &cli.Command{
 		_, err = New(ctx,
 			RetrieveAPI(&api),
 			Repo(r),
+			Online(),
 
 			/*
 				node.Override(new(dtypes.Bootstrapper), isBootstrapper),
