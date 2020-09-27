@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,9 +10,12 @@ import (
 
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/lotus/api"
+	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/cmd/lotus-retrieve-api-daemon/node"
 	"github.com/filecoin-project/lotus/node/repo"
 )
+
+const flagRetrieveRepo = "retrieve-repo"
 
 const listenAddr = "127.0.0.1:1238"
 
@@ -21,11 +23,16 @@ var daemonCmd = &cli.Command{
 	Name:  "daemon",
 	Usage: "run retrieve api daemon",
 	Action: func(cctx *cli.Context) error {
-		var api api.Retrieve
+		var retrieveAPI api.Retrieve
 
-		ctx := context.Background()
+		nodeAPI, ncloser, err := lcli.GetFullNodeAPI(cctx)
+		if err != nil {
+			return err
+		}
+		defer ncloser()
+		ctx := lcli.DaemonContext(cctx)
 
-		r, err := repo.NewFS(cctx.String("repo"))
+		r, err := repo.NewFS(cctx.String(flagRetrieveRepo))
 		if err != nil {
 			return xerrors.Errorf("opening fs repo: %w", err)
 		}
@@ -37,9 +44,10 @@ var daemonCmd = &cli.Command{
 		// from lotus/daemon.go where it called node.New()
 		// stop, err := New(ctx,
 		_, err = node.New(ctx,
-			node.RetrieveAPI(&api),
+			node.RetrieveAPI(&retrieveAPI),
 			node.Repo(r),
 			node.Online(),
+			node.Override(new(api.FullNode), nodeAPI),
 
 			/*
 				node.Override(new(dtypes.Bootstrapper), isBootstrapper),
@@ -67,7 +75,7 @@ var daemonCmd = &cli.Command{
 			return xerrors.Errorf("initializing node: %w", err)
 		}
 		rpcServer := jsonrpc.NewServer()
-		rpcServer.Register("Filecoin", api)
+		rpcServer.Register("Filecoin", retrieveAPI)
 
 		http.Handle("/rpc/v0", rpcServer)
 
@@ -82,8 +90,13 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "repo",
-				EnvVars: []string{"LOTUS_RETRIEVE_PATH"},
+				EnvVars: []string{"LOTUS_PATH"},
 				Hidden:  true,
+				Value:   "~/.lotus", // TODO: Consider XDG_DATA_HOME
+			},
+			&cli.StringFlag{
+				Name:    flagRetrieveRepo,
+				EnvVars: []string{"LOTUS_RETRIEVE_PATH"},
 				Value:   "~/.lotusretrieve", // TODO: Consider XDG_DATA_HOME
 			},
 		},
