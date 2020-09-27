@@ -1,9 +1,10 @@
-package main
+package node
 
 import (
 	"context"
 	"errors"
 
+	rmodules "github.com/filecoin-project/cmd/lotus-retrieve-api-daemon/node/modules"
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/node/impl"
@@ -77,7 +78,7 @@ func Repo(r repo.Repo) Option {
 			// Override(new(dtypes.ClientMultiDstore), modules.ClientMultiDatastore),
 
 			// Override(new(dtypes.ClientBlockstore), modules.ClientBlockstore),
-			Override(new(dtypes.ClientRetrievalStoreManager), modules.ClientRetrievalStoreManager),
+			Override(new(dtypes.ClientRetrievalStoreManager), rmodules.ClientRetrievalStoreManager),
 			// Override(new(ci.PrivKey), lp2p.PrivKey),
 			// Override(new(ci.PubKey), ci.PrivKey.GetPublic),
 			// Override(new(peer.ID), peer.IDFromPublicKey),

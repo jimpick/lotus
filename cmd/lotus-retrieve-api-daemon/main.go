@@ -11,6 +11,7 @@ import (
 
 	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/cmd/lotus-retrieve-api-daemon/node"
 	"github.com/filecoin-project/lotus/node/repo"
 )
 
@@ -35,10 +36,10 @@ var daemonCmd = &cli.Command{
 
 		// from lotus/daemon.go where it called node.New()
 		// stop, err := New(ctx,
-		_, err = New(ctx,
-			RetrieveAPI(&api),
-			Repo(r),
-			Online(),
+		_, err = node.New(ctx,
+			node.RetrieveAPI(&api),
+			node.Repo(r),
+			node.Online(),
 
 			/*
 				node.Override(new(dtypes.Bootstrapper), isBootstrapper),
