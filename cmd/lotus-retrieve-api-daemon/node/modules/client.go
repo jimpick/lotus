@@ -22,7 +22,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 
 	"github.com/filecoin-project/lotus/journal"
-	"github.com/filecoin-project/lotus/lib/blockstore"
 	"github.com/filecoin-project/lotus/markets"
 	marketevents "github.com/filecoin-project/lotus/markets/loggers"
 	"github.com/filecoin-project/lotus/markets/retrievaladapter"
@@ -58,10 +57,12 @@ func ClientImportMgr(mds dtypes.ClientMultiDstore, ds dtypes.MetadataDS) dtypes.
 	return importmgr.New(mds, namespace.Wrap(ds, datastore.NewKey("/client")))
 }
 
+/*
 func ClientBlockstore(imgr dtypes.ClientImportMgr) dtypes.ClientBlockstore {
 	// in most cases this is now unused in normal operations -- however, it's important to preserve for the IPFS use case
 	return blockstore.WrapIDStore(imgr.Blockstore)
 }
+*/
 
 // RegisterClientValidator is an initialization hook that registers the client
 // request validator with the data transfer module as the validator for
@@ -97,9 +98,11 @@ func NewClientGraphsyncDataTransfer(lc fx.Lifecycle, h host.Host, gs dtypes.Grap
 }
 
 // NewClientDatastore creates a datastore for the client to store its deals
+/*
 func NewClientDatastore(ds dtypes.MetadataDS) dtypes.ClientDatastore {
 	return namespace.Wrap(ds, datastore.NewKey("/deals/client"))
 }
+*/
 
 type ClientDealFunds funds.DealFunds
 

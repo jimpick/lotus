@@ -105,7 +105,7 @@ func Repo(r repo.Repo) Option {
 			// Override(new(dtypes.ChainBlockstore), modules.ChainBlockstore),
 
 			// Override(new(dtypes.ClientImportMgr), modules.ClientImportMgr),
-			// Override(new(dtypes.ClientMultiDstore), modules.ClientMultiDatastore),
+			Override(new(dtypes.ClientMultiDstore), rmodules.ClientMultiDatastore),
 
 			// Override(new(dtypes.ClientBlockstore), modules.ClientBlockstore),
 			Override(new(dtypes.ClientRetrievalStoreManager), rmodules.ClientRetrievalStoreManager),
@@ -227,12 +227,12 @@ func Online() Option {
 				Override(HandleIncomingBlocksKey, modules.HandleIncomingBlocks),
 
 				Override(new(*discovery.Local), modules.NewLocalDiscovery),
-				Override(new(retrievalmarket.PeerResolver), modules.RetrievalResolver),
 		*/
+		Override(new(retrievalmarket.PeerResolver), modules.RetrievalResolver),
 		Override(new(retrievalmarket.RetrievalClient), modules.RetrievalClient),
+		// Override(new(dtypes.ClientDatastore), modules.NewClientDatastore),
+		Override(new(dtypes.ClientDataTransfer), modules.NewClientGraphsyncDataTransfer),
 		/*
-				Override(new(dtypes.ClientDatastore), modules.NewClientDatastore),
-				Override(new(dtypes.ClientDataTransfer), modules.NewClientGraphsyncDataTransfer),
 				Override(new(modules.ClientDealFunds), modules.NewClientDealFunds),
 				Override(new(storagemarket.StorageClient), modules.StorageClient),
 				Override(new(storagemarket.StorageClientNode), storageadapter.NewClientNodeAdapter),
