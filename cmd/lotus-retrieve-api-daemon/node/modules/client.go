@@ -20,16 +20,15 @@ import (
 	"github.com/ipfs/go-datastore/namespace"
 	"github.com/libp2p/go-libp2p-core/host"
 
+	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/journal"
+	"github.com/filecoin-project/lotus/lib/blockstore"
 	"github.com/filecoin-project/lotus/markets"
 	marketevents "github.com/filecoin-project/lotus/markets/loggers"
 	"github.com/filecoin-project/lotus/markets/retrievaladapter"
-	"github.com/filecoin-project/lotus/node/impl/full"
-	payapi "github.com/filecoin-project/lotus/node/impl/paych"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/repo"
 	"github.com/filecoin-project/lotus/node/repo/importmgr"
-	"github.com/filecoin-project/lotus/node/repo/retrievalstoremgr"
 )
 
 func ClientMultiDatastore(lc fx.Lifecycle, r repo.LockedRepo) (dtypes.ClientMultiDstore, error) {
@@ -56,12 +55,10 @@ func ClientImportMgr(mds dtypes.ClientMultiDstore, ds dtypes.MetadataDS) dtypes.
 	return importmgr.New(mds, namespace.Wrap(ds, datastore.NewKey("/client")))
 }
 
-/*
 func ClientBlockstore(imgr dtypes.ClientImportMgr) dtypes.ClientBlockstore {
 	// in most cases this is now unused in normal operations -- however, it's important to preserve for the IPFS use case
 	return blockstore.WrapIDStore(imgr.Blockstore)
 }
-*/
 
 // RegisterClientValidator is an initialization hook that registers the client
 // request validator with the data transfer module as the validator for
@@ -97,11 +94,9 @@ func NewClientGraphsyncDataTransfer(lc fx.Lifecycle, h host.Host, gs dtypes.Grap
 }
 
 // NewClientDatastore creates a datastore for the client to store its deals
-/*
 func NewClientDatastore(ds dtypes.MetadataDS) dtypes.ClientDatastore {
 	return namespace.Wrap(ds, datastore.NewKey("/deals/client"))
 }
-*/
 
 /*
 type ClientDealFunds funds.DealFunds
@@ -112,8 +107,11 @@ func NewClientDealFunds(ds dtypes.MetadataDS) (ClientDealFunds, error) {
 */
 
 // RetrievalClient creates a new retrieval client attached to the client blockstore
-func RetrievalClient(lc fx.Lifecycle, h host.Host, mds dtypes.ClientMultiDstore, dt dtypes.ClientDataTransfer, payAPI payapi.PaychAPI, resolver retrievalmarket.PeerResolver, ds dtypes.MetadataDS, chainAPI full.ChainAPI, stateAPI full.StateAPI) (retrievalmarket.RetrievalClient, error) {
-	adapter := retrievaladapter.NewRetrievalClientNode(payAPI, chainAPI, stateAPI)
+
+// func RetrievalClient(lc fx.Lifecycle, h host.Host, mds dtypes.ClientMultiDstore, dt dtypes.ClientDataTransfer, payAPI payapi.PaychAPI, resolver retrievalmarket.PeerResolver, ds dtypes.MetadataDS, chainAPI full.ChainAPI, stateAPI full.StateAPI) (retrievalmarket.RetrievalClient, error) {
+// func RetrievalClient(lc fx.Lifecycle, h host.Host, mds dtypes.ClientMultiDstore, dt dtypes.ClientDataTransfer, stateAPI full.StateAPI) (retrievalmarket.RetrievalClient, error) {
+func RetrievalClient(lc fx.Lifecycle, h host.Host, mds dtypes.ClientMultiDstore, dt dtypes.ClientDataTransfer, resolver retrievalmarket.PeerResolver, ds dtypes.MetadataDS, nodeAPI api.FullNode) (retrievalmarket.RetrievalClient, error) {
+	adapter := retrievaladapter.NewRetrievalClientNode(nodeAPI)
 	network := rmnet.NewFromLibp2pHost(h)
 	sc := storedcounter.New(ds, datastore.NewKey("/retr"))
 	client, err := retrievalimpl.NewClient(network, mds, dt, adapter, resolver, namespace.Wrap(ds, datastore.NewKey("/retrievals/client")), sc)
@@ -135,10 +133,15 @@ func RetrievalClient(lc fx.Lifecycle, h host.Host, mds dtypes.ClientMultiDstore,
 
 // ClientRetrievalStoreManager is the default version of the RetrievalStoreManager that runs on multistore
 func ClientRetrievalStoreManager(imgr dtypes.ClientImportMgr) dtypes.ClientRetrievalStoreManager {
-	return retrievalstoremgr.NewMultiStoreRetrievalStoreManager(imgr)
+	/*
+		return retrievalstoremgr.NewMultiStoreRetrievalStoreManager(imgr)
+	*/
+	return nil
 }
 
 // ClientBlockstoreRetrievalStoreManager is the default version of the RetrievalStoreManager that runs on multistore
+/*
 func ClientBlockstoreRetrievalStoreManager(bs dtypes.ClientBlockstore) dtypes.ClientRetrievalStoreManager {
 	return retrievalstoremgr.NewBlockstoreRetrievalStoreManager(bs)
 }
+*/

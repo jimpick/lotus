@@ -12,14 +12,17 @@ import (
 	"github.com/libp2p/go-libp2p-core/routing"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
+	record "github.com/libp2p/go-libp2p-record"
 
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	"github.com/filecoin-project/go-fil-markets/retrievalmarket/discovery"
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/types"
 	rmodules "github.com/filecoin-project/lotus/cmd/lotus-retrieve-api-daemon/node/modules"
 	"github.com/filecoin-project/lotus/node/impl"
 	"github.com/filecoin-project/lotus/node/modules"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
+	"github.com/filecoin-project/lotus/node/modules/helpers"
 	"github.com/filecoin-project/lotus/node/modules/lp2p"
 	"github.com/filecoin-project/lotus/node/repo"
 	"go.uber.org/fx"
@@ -104,10 +107,10 @@ func Repo(r repo.Repo) Option {
 			Override(new(dtypes.MetadataDS), modules.Datastore),
 			// Override(new(dtypes.ChainBlockstore), modules.ChainBlockstore),
 
-			// Override(new(dtypes.ClientImportMgr), modules.ClientImportMgr),
+			Override(new(dtypes.ClientImportMgr), modules.ClientImportMgr),
 			Override(new(dtypes.ClientMultiDstore), rmodules.ClientMultiDatastore),
 
-			// Override(new(dtypes.ClientBlockstore), modules.ClientBlockstore),
+			Override(new(dtypes.ClientBlockstore), modules.ClientBlockstore),
 			Override(new(dtypes.ClientRetrievalStoreManager), rmodules.ClientRetrievalStoreManager),
 			Override(new(ci.PrivKey), lp2p.PrivKey),
 			Override(new(ci.PubKey), ci.PrivKey.GetPublic),
@@ -212,25 +215,26 @@ func Online() Option {
 				Override(new(modules.Genesis), modules.ErrorGenesis),
 				Override(new(dtypes.AfterGenesisSet), modules.SetGenesis),
 				Override(SetGenesisKey, modules.DoSetGenesis),
-
-				Override(new(dtypes.NetworkName), modules.NetworkName),
-				Override(new(*hello.Service), hello.NewHelloService),
-				Override(new(exchange.Server), exchange.NewServer),
-				Override(new(*peermgr.PeerMgr), peermgr.NewPeerMgr),
-
-				Override(new(dtypes.Graphsync), modules.Graphsync),
-				Override(new(*dtypes.MpoolLocker), new(dtypes.MpoolLocker)),
-
-				Override(RunHelloKey, modules.RunHello),
-				Override(RunChainExchangeKey, modules.RunChainExchange),
-				Override(RunPeerMgrKey, modules.RunPeerMgr),
-				Override(HandleIncomingBlocksKey, modules.HandleIncomingBlocks),
-
-				Override(new(*discovery.Local), modules.NewLocalDiscovery),
 		*/
+		Override(new(dtypes.NetworkName), rmodules.NetworkName),
+		/*
+			Override(new(*hello.Service), hello.NewHelloService),
+			Override(new(exchange.Server), exchange.NewServer),
+			Override(new(*peermgr.PeerMgr), peermgr.NewPeerMgr),
+		*/
+		Override(new(dtypes.Graphsync), rmodules.Graphsync),
+		/*
+			Override(new(*dtypes.MpoolLocker), new(dtypes.MpoolLocker)),
+
+			Override(RunHelloKey, modules.RunHello),
+			Override(RunChainExchangeKey, modules.RunChainExchange),
+			Override(RunPeerMgrKey, modules.RunPeerMgr),
+			Override(HandleIncomingBlocksKey, modules.HandleIncomingBlocks),
+		*/
+		Override(new(*discovery.Local), modules.NewLocalDiscovery),
 		Override(new(retrievalmarket.PeerResolver), modules.RetrievalResolver),
-		Override(new(retrievalmarket.RetrievalClient), modules.RetrievalClient),
-		// Override(new(dtypes.ClientDatastore), modules.NewClientDatastore),
+		Override(new(retrievalmarket.RetrievalClient), rmodules.RetrievalClient),
+		Override(new(dtypes.ClientDatastore), modules.NewClientDatastore),
 		Override(new(dtypes.ClientDataTransfer), modules.NewClientGraphsyncDataTransfer),
 		/*
 				Override(new(modules.ClientDealFunds), modules.NewClientDealFunds),
@@ -337,10 +341,13 @@ func defaults() []Option {
 			Override(InitJournalKey, func(j journal.Journal) {
 				journal.J = j // eagerly sets the global journal through fx.Invoke.
 			}),
+		*/
 
-			Override(new(helpers.MetricsCtx), context.Background),
-			Override(new(record.Validator), modules.RecordValidator),
-			Override(new(dtypes.Bootstrapper), dtypes.Bootstrapper(false)),
+		Override(new(helpers.MetricsCtx), context.Background),
+		Override(new(record.Validator), modules.RecordValidator),
+
+		Override(new(dtypes.Bootstrapper), dtypes.Bootstrapper(false)),
+		/*
 			Override(new(dtypes.ShutdownChan), make(chan struct{})),
 
 			// Filecoin modules
