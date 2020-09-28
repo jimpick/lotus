@@ -20,7 +20,7 @@ MINER_OWNER=$(echo $OFFER | jq .result.Miner)
 MINER_PEER=$(echo $OFFER | jq .result.MinerPeer)
 
 ORDER="{ \"Root\": $ROOT, \"Piece\": null, \"Size\": $SIZE, \"Total\": $MIN_PRICE, \"UnsealPrice\": $UNSEAL_PRICE, \"PaymentInterval\": $PAYMENT_INTERVAL, \"PaymentIntervalIncrease\": $PAYMENT_INTERVAL_INCREASE, \"Client\": \"$CLIENT\", \"Miner\": $MINER_OWNER, \"MinerPeer\": $MINER_PEER }"
-#echo $ORDER | jq
+echo $ORDER | jq
 
 FILEREF="{ \"Path\": \"$DEST\", \"IsCAR\": false }"
 DATA="{ \"jsonrpc\": \"2.0\", \"method\": \"Filecoin.ClientRetrieve\", \"params\": [ $ORDER, $FILEREF ], \"id\": 1 }"

@@ -29,6 +29,7 @@ import (
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/repo"
 	"github.com/filecoin-project/lotus/node/repo/importmgr"
+	"github.com/filecoin-project/lotus/node/repo/retrievalstoremgr"
 )
 
 func ClientMultiDatastore(lc fx.Lifecycle, r repo.LockedRepo) (dtypes.ClientMultiDstore, error) {
@@ -133,15 +134,10 @@ func RetrievalClient(lc fx.Lifecycle, h host.Host, mds dtypes.ClientMultiDstore,
 
 // ClientRetrievalStoreManager is the default version of the RetrievalStoreManager that runs on multistore
 func ClientRetrievalStoreManager(imgr dtypes.ClientImportMgr) dtypes.ClientRetrievalStoreManager {
-	/*
-		return retrievalstoremgr.NewMultiStoreRetrievalStoreManager(imgr)
-	*/
-	return nil
+	return retrievalstoremgr.NewMultiStoreRetrievalStoreManager(imgr)
 }
 
 // ClientBlockstoreRetrievalStoreManager is the default version of the RetrievalStoreManager that runs on multistore
-/*
 func ClientBlockstoreRetrievalStoreManager(bs dtypes.ClientBlockstore) dtypes.ClientRetrievalStoreManager {
 	return retrievalstoremgr.NewBlockstoreRetrievalStoreManager(bs)
 }
-*/

@@ -95,8 +95,8 @@ func readSubscribeEvents(ctx context.Context, subscribeEvents chan retrievalSubs
 func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref *api.FileRef, events chan marketevents.RetrievalEvent) {
 	defer close(events)
 
-	fmt.Printf("Jim clientRetrieve order %v\n", order)
-	fmt.Printf("Jim clientRetrieve ref %v\n", ref)
+	fmt.Printf("Jim clientRetrieve2 order %v\n", order)
+	fmt.Printf("Jim clientRetrieve2 ref %v\n", ref)
 	finish := func(e error) {
 		if e != nil {
 			events <- marketevents.RetrievalEvent{Err: e.Error(), FundsSpent: big.Zero()}
