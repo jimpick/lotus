@@ -12,7 +12,6 @@ import (
 	"github.com/filecoin-project/lotus/api"
 	lcli "github.com/filecoin-project/lotus/cli"
 	"github.com/filecoin-project/lotus/cmd/lotus-retrieve-api-daemon/node"
-	full "github.com/filecoin-project/lotus/node/impl/full"
 	"github.com/filecoin-project/lotus/node/repo"
 )
 
@@ -52,7 +51,9 @@ var daemonCmd = &cli.Command{
 			//node.Override(new(payapi.PaychAPI), nodeAPI),
 			// node.Override(new(full.ChainAPI), nodeAPI),
 			// node.Override(new(full.StateForRetrievalAPI), rfull.StateForRetrievalAPI),
-			node.Override(new(full.StateForRetrievalAPI), nodeAPI),
+			node.Override(new(api.StateForRetrieval), nodeAPI),
+			node.Override(new(api.ChainForRetrieval), nodeAPI),
+			node.Override(new(api.PaychForRetrieval), nodeAPI),
 
 			/*
 				node.Override(new(dtypes.Bootstrapper), isBootstrapper),

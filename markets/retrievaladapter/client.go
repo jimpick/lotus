@@ -14,20 +14,18 @@ import (
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/filecoin-project/lotus/node/impl/full"
-	payapi "github.com/filecoin-project/lotus/node/impl/paych"
 )
 
 type retrievalClientNode struct {
-	chainAPI             full.ChainAPI
-	payAPI               payapi.PaychAPI
-	stateForRetrievalAPI api.StateForRetrieval
+	chainAPI api.ChainForRetrieval
+	payAPI   api.PaychForRetrieval
+	stateAPI api.StateForRetrieval
 }
 
 // NewRetrievalClientNode returns a new node adapter for a retrieval client that talks to the
 // Lotus Node
-func NewRetrievalClientNode(payAPI payapi.PaychAPI, chainAPI full.ChainAPI, stateForRetrievalAPI api.StateForRetrieval) retrievalmarket.RetrievalClientNode {
-	return &retrievalClientNode{payAPI: payAPI, chainAPI: chainAPI, stateForRetrievalAPI: stateForRetrievalAPI}
+func NewRetrievalClientNode(payAPI api.PaychForRetrieval, chainAPI api.ChainForRetrieval, stateAPI api.StateForRetrieval) retrievalmarket.RetrievalClientNode {
+	return &retrievalClientNode{payAPI: payAPI, chainAPI: chainAPI, stateAPI: stateAPI}
 }
 
 // GetOrCreatePaymentChannel sets up a new payment channel if one does not exist
@@ -99,7 +97,7 @@ func (rcn *retrievalClientNode) GetKnownAddresses(ctx context.Context, p retriev
 	if err != nil {
 		return nil, err
 	}
-	mi, err := rcn.stateForRetrievalAPI.StateMinerInfo(ctx, p.Address, tsk)
+	mi, err := rcn.stateAPI.StateMinerInfo(ctx, p.Address, tsk)
 	if err != nil {
 		return nil, err
 	}

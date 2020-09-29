@@ -58,6 +58,7 @@ import (
 	"github.com/filecoin-project/lotus/node/impl"
 	"github.com/filecoin-project/lotus/node/impl/common"
 	"github.com/filecoin-project/lotus/node/impl/full"
+	"github.com/filecoin-project/lotus/node/impl/paych"
 	"github.com/filecoin-project/lotus/node/modules"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
@@ -311,6 +312,8 @@ func Online() Option {
 			Override(SettlePaymentChannelsKey, settler.SettlePaymentChannels),
 
 			Override(new(api.StateForRetrieval), From(new(full.StateAPI))),
+			Override(new(api.ChainForRetrieval), From(new(full.ChainAPI))),
+			Override(new(api.PaychForRetrieval), From(new(paych.PaychAPI))),
 		),
 
 		// miner
