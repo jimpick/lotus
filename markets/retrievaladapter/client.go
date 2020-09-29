@@ -14,16 +14,20 @@ import (
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/filecoin-project/lotus/node/impl/full"
+	payapi "github.com/filecoin-project/lotus/node/impl/paych"
 )
 
 type retrievalClientNode struct {
-	nodeAPI api.FullNode
+	chainAPI             full.ChainAPI
+	payAPI               payapi.PaychAPI
+	stateForRetrievalAPI api.StateForRetrieval
 }
 
 // NewRetrievalClientNode returns a new node adapter for a retrieval client that talks to the
 // Lotus Node
-func NewRetrievalClientNode(nodeAPI api.FullNode) retrievalmarket.RetrievalClientNode {
-	return &retrievalClientNode{nodeAPI: nodeAPI}
+func NewRetrievalClientNode(payAPI payapi.PaychAPI, chainAPI full.ChainAPI, stateForRetrievalAPI api.StateForRetrieval) retrievalmarket.RetrievalClientNode {
+	return &retrievalClientNode{payAPI: payAPI, chainAPI: chainAPI, stateForRetrievalAPI: stateForRetrievalAPI}
 }
 
 // GetOrCreatePaymentChannel sets up a new payment channel if one does not exist
@@ -32,7 +36,7 @@ func NewRetrievalClientNode(nodeAPI api.FullNode) retrievalmarket.RetrievalClien
 func (rcn *retrievalClientNode) GetOrCreatePaymentChannel(ctx context.Context, clientAddress address.Address, minerAddress address.Address, clientFundsAvailable abi.TokenAmount, tok shared.TipSetToken) (address.Address, cid.Cid, error) {
 	// TODO: respect the provided TipSetToken (a serialized TipSetKey) when
 	// querying the chain
-	ci, err := rcn.nodeAPI.PaychGet(ctx, clientAddress, minerAddress, clientFundsAvailable)
+	ci, err := rcn.payAPI.PaychGet(ctx, clientAddress, minerAddress, clientFundsAvailable)
 	if err != nil {
 		return address.Undef, cid.Undef, err
 	}
@@ -43,7 +47,7 @@ func (rcn *retrievalClientNode) GetOrCreatePaymentChannel(ctx context.Context, c
 // CreatePaymentVoucher will automatically make vouchers only for the difference
 // in total
 func (rcn *retrievalClientNode) AllocateLane(ctx context.Context, paymentChannel address.Address) (uint64, error) {
-	return rcn.nodeAPI.PaychAllocateLane(ctx, paymentChannel)
+	return rcn.payAPI.PaychAllocateLane(ctx, paymentChannel)
 }
 
 // CreatePaymentVoucher creates a new payment voucher in the given lane for a
@@ -52,7 +56,7 @@ func (rcn *retrievalClientNode) AllocateLane(ctx context.Context, paymentChannel
 func (rcn *retrievalClientNode) CreatePaymentVoucher(ctx context.Context, paymentChannel address.Address, amount abi.TokenAmount, lane uint64, tok shared.TipSetToken) (*paych.SignedVoucher, error) {
 	// TODO: respect the provided TipSetToken (a serialized TipSetKey) when
 	// querying the chain
-	voucher, err := rcn.nodeAPI.PaychVoucherCreate(ctx, paymentChannel, amount, lane)
+	voucher, err := rcn.payAPI.PaychVoucherCreate(ctx, paymentChannel, amount, lane)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +67,7 @@ func (rcn *retrievalClientNode) CreatePaymentVoucher(ctx context.Context, paymen
 }
 
 func (rcn *retrievalClientNode) GetChainHead(ctx context.Context) (shared.TipSetToken, abi.ChainEpoch, error) {
-	head, err := rcn.nodeAPI.ChainHead(ctx)
+	head, err := rcn.chainAPI.ChainHead(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -72,12 +76,12 @@ func (rcn *retrievalClientNode) GetChainHead(ctx context.Context) (shared.TipSet
 }
 
 func (rcn *retrievalClientNode) WaitForPaymentChannelReady(ctx context.Context, messageCID cid.Cid) (address.Address, error) {
-	return rcn.nodeAPI.PaychGetWaitReady(ctx, messageCID)
+	return rcn.payAPI.PaychGetWaitReady(ctx, messageCID)
 }
 
 func (rcn *retrievalClientNode) CheckAvailableFunds(ctx context.Context, paymentChannel address.Address) (retrievalmarket.ChannelAvailableFunds, error) {
 
-	channelAvailableFunds, err := rcn.nodeAPI.PaychAvailableFunds(ctx, paymentChannel)
+	channelAvailableFunds, err := rcn.payAPI.PaychAvailableFunds(ctx, paymentChannel)
 	if err != nil {
 		return retrievalmarket.ChannelAvailableFunds{}, err
 	}
@@ -95,7 +99,7 @@ func (rcn *retrievalClientNode) GetKnownAddresses(ctx context.Context, p retriev
 	if err != nil {
 		return nil, err
 	}
-	mi, err := rcn.nodeAPI.StateMinerInfo(ctx, p.Address, tsk)
+	mi, err := rcn.stateForRetrievalAPI.StateMinerInfo(ctx, p.Address, tsk)
 	if err != nil {
 		return nil, err
 	}
