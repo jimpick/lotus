@@ -136,6 +136,7 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 	subscribeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	unsubscribe := a.Retrieval.SubscribeToEvents(func(event rm.ClientEvent, state rm.ClientDealState) {
+		fmt.Printf("Jim retrieval event %v, %v, %v\n", event, rm.DealStatuses[state.Status], state)
 		if state.PayloadCID.Equals(order.Root) && state.ID == dealID {
 			select {
 			case <-subscribeCtx.Done():
