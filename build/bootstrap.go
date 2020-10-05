@@ -2,6 +2,7 @@ package build
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 )
 
 func BuiltinBootstrap() ([]peer.AddrInfo, error) {
+	fmt.Println("Jim BuiltinBootstrap")
 	if DisableBuiltinAssets {
 		return nil, nil
 	}
@@ -34,6 +36,12 @@ func BuiltinBootstrap() ([]peer.AddrInfo, error) {
 		}
 		pi, err := addrutil.ParseAddresses(context.TODO(), strings.Split(strings.TrimSpace(spi), "\n"))
 		out = append(out, pi...)
+		extra := []string{
+			"/ip4/192.168.240.129/tcp/34205/p2p/12D3KooWHsom4LPf85FaWUVxfuMaeSpaj5ikzLGb1T4Y3QydRBcG",
+			"/ip4/192.168.240.129/tcp/44299/p2p/12D3KooWAJ1Hd3Mu1W5N35AyPeti1oQt5QYWnk584nKdUbk9wedq",
+		}
+		extraPeers, err := addrutil.ParseAddresses(context.TODO(), extra)
+		out = append(out, extraPeers...)
 		return err
 	})
 	return out, err

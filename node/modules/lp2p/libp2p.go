@@ -2,6 +2,7 @@ package lp2p
 
 import (
 	"crypto/rand"
+	"fmt"
 	"time"
 
 	"github.com/filecoin-project/lotus/build"
@@ -85,6 +86,7 @@ func ConnectionManager(low, high uint, grace time.Duration, protected []string) 
 		}
 
 		for _, inf := range infos {
+			fmt.Printf("Jim libp2p connectionmanager %v\n", inf)
 			cm.Protect(inf.ID, "bootstrap")
 		}
 

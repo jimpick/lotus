@@ -1,6 +1,6 @@
 #! /bin/bash
 
-killall lotus
+killall lotus 2> /dev/null
 rm -rf ~/.lotus ~/tmp/*.log
 
 ./jim-copy-car.sh

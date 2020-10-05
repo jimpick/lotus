@@ -2,6 +2,7 @@ package peermgr
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -192,6 +193,7 @@ func (pmgr *PeerMgr) doExpand(ctx context.Context) {
 
 		log.Info("connecting to bootstrap peers")
 		for _, bsp := range pmgr.bootstrappers {
+			fmt.Printf("Jim PeerMgr connect bootstrapper %v\n", bsp)
 			if err := pmgr.h.Connect(ctx, bsp); err != nil {
 				log.Warnf("failed to connect to bootstrap peer: %s", err)
 			}

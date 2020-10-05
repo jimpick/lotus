@@ -143,3 +143,5 @@ replace github.com/filecoin-project/fil-blst => ./extern/fil-blst
 replace github.com/filecoin-project/go-fil-markets => ../go-fil-markets
 
 replace github.com/filecoin-project/go-data-transfer => ../go-data-transfer
+
+replace github.com/ipfs/go-graphsync => ../go-graphsync

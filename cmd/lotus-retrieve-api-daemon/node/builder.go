@@ -19,6 +19,7 @@ import (
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/types"
 	rmodules "github.com/filecoin-project/lotus/cmd/lotus-retrieve-api-daemon/node/modules"
+	"github.com/filecoin-project/lotus/lib/peermgr"
 	"github.com/filecoin-project/lotus/node/impl"
 	"github.com/filecoin-project/lotus/node/modules"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
@@ -62,6 +63,7 @@ const (
 	// libp2p
 
 	PstoreAddSelfKeysKey
+	RunPeerMgrKey
 
 	// daemon
 	ExtractApiKey
@@ -187,48 +189,52 @@ func Online() Option {
 			ApplyIf(isType(repo.FullNode),
 				// TODO: Fix offline mode
 
-				Override(new(dtypes.BootstrapPeers), modules.BuiltinBootstrap),
-				Override(new(dtypes.DrandBootstrap), modules.DrandBootstrap),
-				Override(new(dtypes.DrandSchedule), modules.BuiltinDrandConfig),
+		*/
+		Override(new(dtypes.BootstrapPeers), modules.BuiltinBootstrap),
+		/*
+			Override(new(dtypes.DrandBootstrap), modules.DrandBootstrap),
+			Override(new(dtypes.DrandSchedule), modules.BuiltinDrandConfig),
 
-				Override(HandleIncomingMessagesKey, modules.HandleIncomingMessages),
+			Override(HandleIncomingMessagesKey, modules.HandleIncomingMessages),
 
-				Override(new(ffiwrapper.Verifier), ffiwrapper.ProofVerifier),
-				Override(new(vm.SyscallBuilder), vm.Syscalls),
-				Override(new(*store.ChainStore), modules.ChainStore),
-				Override(new(*stmgr.StateManager), stmgr.NewStateManager),
-				Override(new(*wallet.Wallet), wallet.NewWallet),
+			Override(new(ffiwrapper.Verifier), ffiwrapper.ProofVerifier),
+			Override(new(vm.SyscallBuilder), vm.Syscalls),
+			Override(new(*store.ChainStore), modules.ChainStore),
+			Override(new(*stmgr.StateManager), stmgr.NewStateManager),
+			Override(new(*wallet.Wallet), wallet.NewWallet),
 
-				Override(new(dtypes.ChainGCLocker), blockstore.NewGCLocker),
-				Override(new(dtypes.ChainGCBlockstore), modules.ChainGCBlockstore),
-				Override(new(dtypes.ChainBitswap), modules.ChainBitswap),
-				Override(new(dtypes.ChainBlockService), modules.ChainBlockService),
+			Override(new(dtypes.ChainGCLocker), blockstore.NewGCLocker),
+			Override(new(dtypes.ChainGCBlockstore), modules.ChainGCBlockstore),
+			Override(new(dtypes.ChainBitswap), modules.ChainBitswap),
+			Override(new(dtypes.ChainBlockService), modules.ChainBlockService),
 
-				// Filecoin services
-				// We don't want the SyncManagerCtor to be used as an fx constructor, but rather as a value.
-				// It will be called implicitly by the Syncer constructor.
-				Override(new(chain.SyncManagerCtor), func() chain.SyncManagerCtor { return chain.NewSyncManager }),
-				Override(new(*chain.Syncer), modules.NewSyncer),
-				Override(new(exchange.Client), exchange.NewClient),
-				Override(new(*messagepool.MessagePool), modules.MessagePool),
+			// Filecoin services
+			// We don't want the SyncManagerCtor to be used as an fx constructor, but rather as a value.
+			// It will be called implicitly by the Syncer constructor.
+			Override(new(chain.SyncManagerCtor), func() chain.SyncManagerCtor { return chain.NewSyncManager }),
+			Override(new(*chain.Syncer), modules.NewSyncer),
+			Override(new(exchange.Client), exchange.NewClient),
+			Override(new(*messagepool.MessagePool), modules.MessagePool),
 
-				Override(new(modules.Genesis), modules.ErrorGenesis),
-				Override(new(dtypes.AfterGenesisSet), modules.SetGenesis),
-				Override(SetGenesisKey, modules.DoSetGenesis),
+			Override(new(modules.Genesis), modules.ErrorGenesis),
+			Override(new(dtypes.AfterGenesisSet), modules.SetGenesis),
+			Override(SetGenesisKey, modules.DoSetGenesis),
 		*/
 		Override(new(dtypes.NetworkName), rmodules.NetworkName),
 		/*
 			Override(new(*hello.Service), hello.NewHelloService),
 			Override(new(exchange.Server), exchange.NewServer),
-			Override(new(*peermgr.PeerMgr), peermgr.NewPeerMgr),
 		*/
+		Override(new(*peermgr.PeerMgr), peermgr.NewPeerMgr),
 		Override(new(dtypes.Graphsync), rmodules.Graphsync),
 		/*
 			Override(new(*dtypes.MpoolLocker), new(dtypes.MpoolLocker)),
 
 			Override(RunHelloKey, modules.RunHello),
 			Override(RunChainExchangeKey, modules.RunChainExchange),
-			Override(RunPeerMgrKey, modules.RunPeerMgr),
+		*/
+		Override(RunPeerMgrKey, modules.RunPeerMgr),
+		/*
 			Override(HandleIncomingBlocksKey, modules.HandleIncomingBlocks),
 		*/
 		Override(new(*discovery.Local), modules.NewLocalDiscovery),
