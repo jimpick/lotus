@@ -1,3 +1,5 @@
+// +build ignore
+
 package modules
 
 import (
@@ -14,6 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/routing"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/prometheus/common/log"
 	"go.uber.org/fx"
 	"golang.org/x/xerrors"
 

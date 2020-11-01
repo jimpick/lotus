@@ -1,3 +1,5 @@
+// +build ignore
+
 package client
 
 import (
@@ -629,20 +631,6 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 	}
 	finish(files.WriteTo(file, ref.Path))
 	return
-}
-
-func (a *API) ClientQueryAsk(ctx context.Context, p peer.ID, miner address.Address) (*storagemarket.StorageAsk, error) {
-	mi, err := a.StateMinerInfo(ctx, miner, types.EmptyTSK)
-	if err != nil {
-		return nil, xerrors.Errorf("failed getting miner info: %w", err)
-	}
-
-	info := utils.NewStorageProviderInfo(miner, mi.Worker, mi.SectorSize, p, mi.Multiaddrs)
-	ask, err := a.SMDealClient.GetAsk(ctx, info)
-	if err != nil {
-		return nil, err
-	}
-	return ask, nil
 }
 
 func (a *API) ClientCalcCommP(ctx context.Context, inpath string) (*api.CommPRet, error) {

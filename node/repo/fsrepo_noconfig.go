@@ -1,5 +1,3 @@
-// +build ignore
-
 package repo
 
 import (
@@ -13,7 +11,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/BurntSushi/toml"
 	"github.com/ipfs/go-datastore"
 	fslock "github.com/ipfs/go-fs-lock"
 	logging "github.com/ipfs/go-log/v2"
@@ -23,16 +20,13 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
-	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 
 	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/filecoin-project/lotus/node/config"
 )
 
 const (
 	fsAPI           = "api"
 	fsAPIToken      = "token"
-	fsConfig        = "config.toml"
 	fsStorageConfig = "storage.json"
 	fsDatastore     = "datastore"
 	fsLock          = "repo.lock"
@@ -47,17 +41,12 @@ const (
 	StorageMiner
 	Worker
 	Wallet
+	ClientQueryAsk
 )
 
 func defConfForType(t RepoType) interface{} {
 	switch t {
-	case FullNode:
-		return config.DefaultFullNode()
-	case StorageMiner:
-		return config.DefaultStorageMiner()
-	case Worker:
-		return &struct{}{}
-	case Wallet:
+	case ClientQueryAsk:
 		return &struct{}{}
 	default:
 		panic(fmt.Sprintf("unknown RepoType(%d)", int(t)))
@@ -70,8 +59,7 @@ var ErrRepoExists = xerrors.New("repo exists")
 
 // FsRepo is struct for repo, use NewFS to create
 type FsRepo struct {
-	path       string
-	configPath string
+	path string
 }
 
 var _ Repo = &FsRepo{}
@@ -84,13 +72,8 @@ func NewFS(path string) (*FsRepo, error) {
 	}
 
 	return &FsRepo{
-		path:       path,
-		configPath: filepath.Join(path, fsConfig),
+		path: path,
 	}, nil
-}
-
-func (fsr *FsRepo) SetConfigPath(cfgPath string) {
-	fsr.configPath = cfgPath
 }
 
 func (fsr *FsRepo) Exists() (bool, error) {
@@ -123,41 +106,8 @@ func (fsr *FsRepo) Init(t RepoType) error {
 		return err
 	}
 
-	if err := fsr.initConfig(t); err != nil {
-		return xerrors.Errorf("init config: %w", err)
-	}
-
 	return fsr.initKeystore()
 
-}
-
-func (fsr *FsRepo) initConfig(t RepoType) error {
-	_, err := os.Stat(fsr.configPath)
-	if err == nil {
-		// exists
-		return nil
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-
-	c, err := os.Create(fsr.configPath)
-	if err != nil {
-		return err
-	}
-
-	comm, err := config.ConfigComment(defConfForType(t))
-	if err != nil {
-		return xerrors.Errorf("comment: %w", err)
-	}
-	_, err = c.Write(comm)
-	if err != nil {
-		return xerrors.Errorf("write config: %w", err)
-	}
-
-	if err := c.Close(); err != nil {
-		return xerrors.Errorf("close config: %w", err)
-	}
-	return nil
 }
 
 func (fsr *FsRepo) initKeystore() error {
@@ -230,10 +180,9 @@ func (fsr *FsRepo) Lock(repoType RepoType) (LockedRepo, error) {
 		return nil, xerrors.Errorf("could not lock the repo: %w", err)
 	}
 	return &fsLockedRepo{
-		path:       fsr.path,
-		configPath: fsr.configPath,
-		repoType:   repoType,
-		closer:     closer,
+		path:     fsr.path,
+		repoType: repoType,
+		closer:   closer,
 	}, nil
 }
 
@@ -249,18 +198,16 @@ func (fsr *FsRepo) LockRO(repoType RepoType) (LockedRepo, error) {
 }
 
 type fsLockedRepo struct {
-	path       string
-	configPath string
-	repoType   RepoType
-	closer     io.Closer
-	readonly   bool
+	path     string
+	repoType RepoType
+	closer   io.Closer
+	readonly bool
 
 	ds     map[string]datastore.Batching
 	dsErr  error
 	dsOnce sync.Once
 
 	storageLk sync.Mutex
-	configLk  sync.Mutex
 }
 
 func (fsr *fsLockedRepo) Path() string {
@@ -296,80 +243,6 @@ func (fsr *fsLockedRepo) stillValid() error {
 		return ErrClosedRepo
 	}
 	return nil
-}
-
-func (fsr *fsLockedRepo) Config() (interface{}, error) {
-	fsr.configLk.Lock()
-	defer fsr.configLk.Unlock()
-
-	return fsr.loadConfigFromDisk()
-}
-
-func (fsr *fsLockedRepo) loadConfigFromDisk() (interface{}, error) {
-	return config.FromFile(fsr.configPath, defConfForType(fsr.repoType))
-}
-
-func (fsr *fsLockedRepo) SetConfig(c func(interface{})) error {
-	if err := fsr.stillValid(); err != nil {
-		return err
-	}
-
-	fsr.configLk.Lock()
-	defer fsr.configLk.Unlock()
-
-	cfg, err := fsr.loadConfigFromDisk()
-	if err != nil {
-		return err
-	}
-
-	// mutate in-memory representation of config
-	c(cfg)
-
-	// buffer into which we write TOML bytes
-	buf := new(bytes.Buffer)
-
-	// encode now-mutated config as TOML and write to buffer
-	err = toml.NewEncoder(buf).Encode(cfg)
-	if err != nil {
-		return err
-	}
-
-	// write buffer of TOML bytes to config file
-	err = ioutil.WriteFile(fsr.configPath, buf.Bytes(), 0644)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (fsr *fsLockedRepo) GetStorage() (stores.StorageConfig, error) {
-	fsr.storageLk.Lock()
-	defer fsr.storageLk.Unlock()
-
-	return fsr.getStorage(nil)
-}
-
-func (fsr *fsLockedRepo) getStorage(def *stores.StorageConfig) (stores.StorageConfig, error) {
-	c, err := config.StorageFromFile(fsr.join(fsStorageConfig), def)
-	if err != nil {
-		return stores.StorageConfig{}, err
-	}
-	return *c, nil
-}
-
-func (fsr *fsLockedRepo) SetStorage(c func(*stores.StorageConfig)) error {
-	fsr.storageLk.Lock()
-	defer fsr.storageLk.Unlock()
-
-	sc, err := fsr.getStorage(&stores.StorageConfig{})
-	if err != nil {
-		return xerrors.Errorf("get storage: %w", err)
-	}
-
-	c(&sc)
-
-	return config.WriteStorageFile(fsr.join(fsStorageConfig), sc)
 }
 
 func (fsr *fsLockedRepo) Stat(path string) (fsutil.FsStat, error) {

@@ -16,7 +16,7 @@ import (
 	"github.com/filecoin-project/go-bitfield"
 	datatransfer "github.com/filecoin-project/go-data-transfer"
 	"github.com/filecoin-project/go-fil-markets/piecestore"
-	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
+	retrievalmarket "github.com/filecoin-project/go-fil-markets/retrievalmarket/apitypes"
 	"github.com/filecoin-project/go-fil-markets/storagemarket"
 	"github.com/filecoin-project/go-jsonrpc/auth"
 	"github.com/filecoin-project/go-multistore"

@@ -1,5 +1,3 @@
-// +build ignore
-
 package rpcenc
 
 import (
@@ -12,7 +10,6 @@ import (
 	"net/url"
 	"path"
 	"reflect"
-	"strconv"
 	"sync"
 	"time"
 
@@ -21,8 +18,6 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-jsonrpc"
-	"github.com/filecoin-project/go-state-types/abi"
-	sealing "github.com/filecoin-project/lotus/extern/storage-sealing"
 )
 
 var log = logging.Logger("rpcenc")
@@ -45,10 +40,6 @@ type ReaderStream struct {
 func ReaderParamEncoder(addr string) jsonrpc.Option {
 	return jsonrpc.WithParamEncoder(new(io.Reader), func(value reflect.Value) (reflect.Value, error) {
 		r := value.Interface().(io.Reader)
-
-		if r, ok := r.(*sealing.NullReader); ok {
-			return reflect.ValueOf(ReaderStream{Type: Null, Info: fmt.Sprint(r.N)}), nil
-		}
 
 		reqID := uuid.New()
 		u, err := url.Parse(addr)
@@ -150,15 +141,6 @@ func ReaderParamDecoder() (http.HandlerFunc, jsonrpc.ServerOption) {
 		var rs ReaderStream
 		if err := json.Unmarshal(b, &rs); err != nil {
 			return reflect.Value{}, xerrors.Errorf("unmarshaling reader id: %w", err)
-		}
-
-		if rs.Type == Null {
-			n, err := strconv.ParseInt(rs.Info, 10, 64)
-			if err != nil {
-				return reflect.Value{}, xerrors.Errorf("parsing null byte count: %w", err)
-			}
-
-			return reflect.ValueOf(sealing.NewNullReader(abi.UnpaddedPieceSize(n))), nil
 		}
 
 		u, err := uuid.Parse(rs.Info)

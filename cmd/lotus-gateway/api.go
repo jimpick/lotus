@@ -19,6 +19,7 @@ import (
 	_ "github.com/filecoin-project/lotus/lib/sigs/bls"
 	_ "github.com/filecoin-project/lotus/lib/sigs/secp"
 	"github.com/filecoin-project/lotus/node/impl/full"
+	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 	"github.com/ipfs/go-cid"
 )
 
@@ -387,4 +388,4 @@ var _ api.GatewayAPI = (*GatewayAPI)(nil)
 var _ full.ChainModuleAPI = (*GatewayAPI)(nil)
 var _ full.GasModuleAPI = (*GatewayAPI)(nil)
 var _ full.MpoolModuleAPI = (*GatewayAPI)(nil)
-var _ full.StateModuleAPI = (*GatewayAPI)(nil)
+var _ moduleapi.StateModuleAPI = (*GatewayAPI)(nil)

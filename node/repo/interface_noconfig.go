@@ -1,5 +1,3 @@
-// +build ignore
-
 package repo
 
 import (
@@ -9,7 +7,6 @@ import (
 	"github.com/multiformats/go-multiaddr"
 
 	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
-	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 
 	"github.com/filecoin-project/lotus/chain/types"
 )
@@ -40,11 +37,11 @@ type LockedRepo interface {
 	Datastore(namespace string) (datastore.Batching, error)
 
 	// Returns config in this repo
-	Config() (interface{}, error)
-	SetConfig(func(interface{})) error
+	// Config() (interface{}, error)
+	// SetConfig(func(interface{})) error
 
-	GetStorage() (stores.StorageConfig, error)
-	SetStorage(func(*stores.StorageConfig)) error
+	// GetStorage() (stores.StorageConfig, error)
+	// SetStorage(func(*stores.StorageConfig)) error
 	Stat(path string) (fsutil.FsStat, error)
 	DiskUsage(path string) (int64, error)
 

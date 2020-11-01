@@ -67,6 +67,7 @@ import (
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
 	"github.com/filecoin-project/lotus/node/modules/lp2p"
+	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 	"github.com/filecoin-project/lotus/node/modules/testing"
 	"github.com/filecoin-project/lotus/node/repo"
 	"github.com/filecoin-project/lotus/paychmgr"
@@ -305,7 +306,7 @@ func Online() Option {
 			Override(new(full.ChainModuleAPI), From(new(api.GatewayAPI))),
 			Override(new(full.GasModuleAPI), From(new(api.GatewayAPI))),
 			Override(new(full.MpoolModuleAPI), From(new(api.GatewayAPI))),
-			Override(new(full.StateModuleAPI), From(new(api.GatewayAPI))),
+			Override(new(moduleapi.StateModuleAPI), From(new(api.GatewayAPI))),
 			Override(new(stmgr.StateManagerAPI), modules.NewRPCStateManager),
 		),
 
@@ -315,7 +316,7 @@ func Online() Option {
 			Override(new(full.ChainModuleAPI), From(new(full.ChainModule))),
 			Override(new(full.GasModuleAPI), From(new(full.GasModule))),
 			Override(new(full.MpoolModuleAPI), From(new(full.MpoolModule))),
-			Override(new(full.StateModuleAPI), From(new(full.StateModule))),
+			Override(new(moduleapi.StateModuleAPI), From(new(full.StateModule))),
 			Override(new(stmgr.StateManagerAPI), From(new(*stmgr.StateManager))),
 
 			Override(RunHelloKey, modules.RunHello),
