@@ -52,6 +52,14 @@ type ApiConnector func() api.FullNode
 // server (only used by the tests)
 func flagForAPI(t repo.RepoType) string {
 	switch t {
+	case repo.FullNode:
+		return "api-url"
+	case repo.StorageMiner:
+		return "miner-api-url"
+	case repo.Worker:
+		return "worker-api-url"
+	case repo.ClientQueryAsk:
+		return "client-query-ask-api-url"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
@@ -59,8 +67,14 @@ func flagForAPI(t repo.RepoType) string {
 
 func flagForRepo(t repo.RepoType) string {
 	switch t {
-	case repo.ClientQueryAsk:
+	case repo.FullNode:
 		return "repo"
+	case repo.StorageMiner:
+		return "miner-repo"
+	case repo.Worker:
+		return "worker-repo"
+	case repo.ClientQueryAsk:
+		return "client-query-ask-repo"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
@@ -74,12 +88,13 @@ func envForRepo(t repo.RepoType) string {
 		return "MINER_API_INFO"
 	case repo.Worker:
 		return "WORKER_API_INFO"
+	case repo.ClientQueryAsk:
+		return "CLIENT_QUERY_ASK_API_INFO"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
 }
 
-// TODO remove after deprecation period
 func envForRepoDeprecation(t repo.RepoType) string {
 	switch t {
 	case repo.FullNode:
