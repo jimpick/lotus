@@ -1,3 +1,5 @@
+// +build ignore
+
 package storageadapter
 
 // this file implements storagemarket.StorageProviderNode

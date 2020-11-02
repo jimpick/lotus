@@ -303,7 +303,7 @@ func Online() Option {
 		// Lite node
 		ApplyIf(isLiteNode,
 			Override(new(messagesigner.MpoolNonceAPI), From(new(modules.MpoolNonceAPI))),
-			Override(new(full.ChainModuleAPI), From(new(api.GatewayAPI))),
+			Override(new(moduleapi.ChainModuleAPI), From(new(api.GatewayAPI))),
 			Override(new(full.GasModuleAPI), From(new(api.GatewayAPI))),
 			Override(new(full.MpoolModuleAPI), From(new(api.GatewayAPI))),
 			Override(new(moduleapi.StateModuleAPI), From(new(api.GatewayAPI))),
@@ -313,7 +313,7 @@ func Online() Option {
 		// Full node
 		ApplyIf(isFullNode,
 			Override(new(messagesigner.MpoolNonceAPI), From(new(*messagepool.MessagePool))),
-			Override(new(full.ChainModuleAPI), From(new(full.ChainModule))),
+			Override(new(moduleapi.ChainModuleAPI), From(new(full.ChainModule))),
 			Override(new(full.GasModuleAPI), From(new(full.GasModule))),
 			Override(new(full.MpoolModuleAPI), From(new(full.MpoolModule))),
 			Override(new(moduleapi.StateModuleAPI), From(new(full.StateModule))),

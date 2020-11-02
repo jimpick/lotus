@@ -385,7 +385,7 @@ func (a *GatewayAPI) WalletVerify(ctx context.Context, k address.Address, msg []
 }
 
 var _ api.GatewayAPI = (*GatewayAPI)(nil)
-var _ full.ChainModuleAPI = (*GatewayAPI)(nil)
+var _ moduleapi.ChainModuleAPI = (*GatewayAPI)(nil)
 var _ full.GasModuleAPI = (*GatewayAPI)(nil)
 var _ full.MpoolModuleAPI = (*GatewayAPI)(nil)
 var _ moduleapi.StateModuleAPI = (*GatewayAPI)(nil)

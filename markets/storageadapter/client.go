@@ -1,3 +1,5 @@
+// +build ignore
+
 package storageadapter
 
 // this file implements storagemarket.StorageClientNode
@@ -31,11 +33,12 @@ import (
 	"github.com/filecoin-project/lotus/lib/sigs"
 	"github.com/filecoin-project/lotus/markets/utils"
 	"github.com/filecoin-project/lotus/node/impl/full"
+	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 )
 
 type ClientNodeAdapter struct {
-	full.StateAPI
-	full.ChainAPI
+	moduleapi.StateModuleAPI
+	moduleapi.ChainModuleAPI
 	full.MpoolAPI
 
 	fm        *market.FundMgr

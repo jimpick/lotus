@@ -21,6 +21,8 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/lib/addrutil"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
+	"github.com/filecoin-project/lotus/node/modules/helpers"
+	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 	"github.com/filecoin-project/lotus/node/repo"
 )
 
@@ -123,3 +125,11 @@ func readNodeCfg(r repo.LockedRepo, accessor func(node *config.FullNode)) error 
 	return nil
 }
 */
+
+func StorageNetworkName(ctx helpers.MetricsCtx, a moduleapi.StateModuleAPI) (dtypes.NetworkName, error) {
+	if !build.Devnet {
+		return "testnetnet", nil
+	}
+	return "mainnet", nil // FIXME: Should we call the API?
+	// return a.StateNetworkName(ctx)
+}
