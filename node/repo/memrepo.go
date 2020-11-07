@@ -1,3 +1,5 @@
+// +build ignore
+
 package repo
 
 import (
@@ -13,8 +15,6 @@ import (
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/xerrors"
-
-	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
 
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
@@ -79,6 +79,7 @@ func (lmem *lockedMemRepo) SetStorage(c func(*stores.StorageConfig)) error {
 	return nil
 }
 
+/*
 func (lmem *lockedMemRepo) Stat(path string) (fsutil.FsStat, error) {
 	return fsutil.Statfs(path)
 }
@@ -90,6 +91,7 @@ func (lmem *lockedMemRepo) DiskUsage(path string) (int64, error) {
 	}
 	return si.OnDisk, nil
 }
+*/
 
 func (lmem *lockedMemRepo) Path() string {
 	lmem.Lock()

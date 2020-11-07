@@ -1,3 +1,5 @@
+// +build ignore
+
 package api
 
 import (
@@ -16,7 +18,6 @@ import (
 	"github.com/filecoin-project/go-fil-markets/storagemarket"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 )
@@ -61,7 +62,7 @@ type StorageMiner interface {
 
 	StorageList(ctx context.Context) (map[stores.ID][]stores.Decl, error)
 	StorageLocal(ctx context.Context) (map[stores.ID]string, error)
-	StorageStat(ctx context.Context, id stores.ID) (fsutil.FsStat, error)
+	// StorageStat(ctx context.Context, id stores.ID) (fsutil.FsStat, error)
 
 	// WorkerConnect tells the node to connect to workers RPC
 	WorkerConnect(context.Context, string) error

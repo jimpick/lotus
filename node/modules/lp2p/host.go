@@ -9,14 +9,11 @@ import (
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
-	dht "github.com/libp2p/go-libp2p-kad-dht"
-	record "github.com/libp2p/go-libp2p-record"
 	routedhost "github.com/libp2p/go-libp2p/p2p/host/routed"
 	mocknet "github.com/libp2p/go-libp2p/p2p/net/mock"
 	"go.uber.org/fx"
 
 	"github.com/filecoin-project/lotus/build"
-	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
 )
 
@@ -70,6 +67,7 @@ func MockHost(mn mocknet.Mocknet, id peer.ID, ps peerstore.Peerstore) (RawHost, 
 	return mn.AddPeerWithPeerstore(id, ps)
 }
 
+/*
 func DHTRouting(mode dht.ModeOpt) interface{} {
 	return func(mctx helpers.MetricsCtx, lc fx.Lifecycle, host RawHost, dstore dtypes.MetadataDS, validator record.Validator, nn dtypes.NetworkName, bs dtypes.Bootstrapper) (BaseIpfsRouting, error) {
 		ctx := helpers.LifecycleCtx(mctx, lc)
@@ -103,6 +101,7 @@ func DHTRouting(mode dht.ModeOpt) interface{} {
 		return d, nil
 	}
 }
+*/
 
 func NilRouting(mctx helpers.MetricsCtx) (BaseIpfsRouting, error) {
 	return nilrouting.ConstructNilRouting(mctx, nil, nil, nil)

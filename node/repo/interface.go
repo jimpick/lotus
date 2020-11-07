@@ -8,7 +8,6 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/multiformats/go-multiaddr"
 
-	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 
 	"github.com/filecoin-project/lotus/chain/types"
@@ -45,8 +44,8 @@ type LockedRepo interface {
 
 	GetStorage() (stores.StorageConfig, error)
 	SetStorage(func(*stores.StorageConfig)) error
-	Stat(path string) (fsutil.FsStat, error)
-	DiskUsage(path string) (int64, error)
+	// Stat(path string) (fsutil.FsStat, error)
+	// DiskUsage(path string) (int64, error)
 
 	// SetAPIEndpoint sets the endpoint of the current API
 	// so it can be read by API clients

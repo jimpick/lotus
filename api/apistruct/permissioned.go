@@ -17,12 +17,14 @@ const (
 var AllPermissions = []auth.Permission{PermRead, PermWrite, PermSign, PermAdmin}
 var DefaultPerms = []auth.Permission{PermRead}
 
+/*
 func PermissionedStorMinerAPI(a api.StorageMiner) api.StorageMiner {
 	var out StorageMinerStruct
 	auth.PermissionedProxy(AllPermissions, DefaultPerms, a, &out.Internal)
 	auth.PermissionedProxy(AllPermissions, DefaultPerms, a, &out.CommonStruct.Internal)
 	return &out
 }
+*/
 
 func PermissionedFullAPI(a api.FullNode) api.FullNode {
 	var out FullNodeStruct
@@ -31,11 +33,13 @@ func PermissionedFullAPI(a api.FullNode) api.FullNode {
 	return &out
 }
 
+/*
 func PermissionedWorkerAPI(a api.WorkerAPI) api.WorkerAPI {
 	var out WorkerStruct
 	auth.PermissionedProxy(AllPermissions, DefaultPerms, a, &out.Internal)
 	return &out
 }
+*/
 
 func PermissionedWalletAPI(a api.WalletAPI) api.WalletAPI {
 	var out WalletStruct

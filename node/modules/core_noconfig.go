@@ -2,28 +2,20 @@ package modules
 
 import (
 	"context"
-	"crypto/rand"
-	"errors"
-	"io"
-	"io/ioutil"
 
-	"github.com/gbrlsnchs/jwt/v3"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	record "github.com/libp2p/go-libp2p-record"
-	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-jsonrpc/auth"
 
-	"github.com/filecoin-project/lotus/api/apistruct"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/lib/addrutil"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
 	"github.com/filecoin-project/lotus/node/modules/moduleapi"
-	"github.com/filecoin-project/lotus/node/repo"
 )
 
 var log = logging.Logger("modules")
@@ -44,6 +36,7 @@ type JwtPayload struct {
 	Allow []auth.Permission
 }
 
+/*
 func APISecret(keystore types.KeyStore, lr repo.LockedRepo) (*dtypes.APIAlg, error) {
 	key, err := keystore.Get(JWTSecretName)
 
@@ -83,6 +76,7 @@ func APISecret(keystore types.KeyStore, lr repo.LockedRepo) (*dtypes.APIAlg, err
 
 	return (*dtypes.APIAlg)(jwt.NewHS256(key.PrivateKey)), nil
 }
+*/
 
 func ConfigBootstrap(peers []string) func() (dtypes.BootstrapPeers, error) {
 	return func() (dtypes.BootstrapPeers, error) {

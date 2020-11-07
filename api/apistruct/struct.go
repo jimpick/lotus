@@ -3,7 +3,6 @@ package apistruct
 import (
 	"context"
 	"io"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
@@ -15,8 +14,6 @@ import (
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-bitfield"
 	datatransfer "github.com/filecoin-project/go-data-transfer"
-	"github.com/filecoin-project/go-fil-markets/piecestore"
-	retrievalmarket "github.com/filecoin-project/go-fil-markets/retrievalmarket/apitypes"
 	"github.com/filecoin-project/go-fil-markets/storagemarket"
 	"github.com/filecoin-project/go-jsonrpc/auth"
 	"github.com/filecoin-project/go-multistore"
@@ -25,7 +22,6 @@ import (
 	"github.com/filecoin-project/go-state-types/crypto"
 	"github.com/filecoin-project/go-state-types/dline"
 	stnetwork "github.com/filecoin-project/go-state-types/network"
-	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
 	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
 	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
 	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
@@ -269,6 +265,7 @@ func (c *FullNodeStruct) StateMinerSectorCount(ctx context.Context, addr address
 	return c.Internal.StateMinerSectorCount(ctx, addr, tsk)
 }
 
+/*
 type StorageMinerStruct struct {
 	CommonStruct
 
@@ -360,6 +357,7 @@ type StorageMinerStruct struct {
 		CreateBackup func(ctx context.Context, fpath string) error `perm:"admin"`
 	}
 }
+*/
 
 type WorkerStruct struct {
 	Internal struct {
@@ -1191,6 +1189,7 @@ func (c *FullNodeStruct) CreateBackup(ctx context.Context, fpath string) error {
 
 // StorageMinerStruct
 
+/*
 func (c *StorageMinerStruct) ActorAddress(ctx context.Context) (address.Address, error) {
 	return c.Internal.ActorAddress(ctx)
 }
@@ -1484,6 +1483,7 @@ func (c *StorageMinerStruct) PiecesGetCIDInfo(ctx context.Context, payloadCid ci
 func (c *StorageMinerStruct) CreateBackup(ctx context.Context, fpath string) error {
 	return c.Internal.CreateBackup(ctx, fpath)
 }
+*/
 
 // WorkerStruct
 
@@ -1709,7 +1709,8 @@ func (c *WalletStruct) WalletDelete(ctx context.Context, addr address.Address) e
 
 var _ api.Common = &CommonStruct{}
 var _ api.FullNode = &FullNodeStruct{}
-var _ api.StorageMiner = &StorageMinerStruct{}
-var _ api.WorkerAPI = &WorkerStruct{}
+
+// var _ api.StorageMiner = &StorageMinerStruct{}
+// var _ api.WorkerAPI = &WorkerStruct{}
 var _ api.GatewayAPI = &GatewayStruct{}
 var _ api.WalletAPI = &WalletStruct{}

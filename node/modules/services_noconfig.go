@@ -1,14 +1,10 @@
 package modules
 
 import (
-	"context"
-
 	"go.uber.org/fx"
 
-	"github.com/filecoin-project/lotus/journal"
 	"github.com/filecoin-project/lotus/lib/peermgr"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
-	"github.com/filecoin-project/lotus/node/repo"
 )
 
 func protosContains(protos []string, search string) bool {
@@ -24,6 +20,7 @@ func RunPeerMgr(mctx helpers.MetricsCtx, lc fx.Lifecycle, pmgr *peermgr.PeerMgr)
 	go pmgr.Run(helpers.LifecycleCtx(mctx, lc))
 }
 
+/*
 func OpenFilesystemJournal(lr repo.LockedRepo, lc fx.Lifecycle, disabled journal.DisabledEvents) (journal.Journal, error) {
 	jrnl, err := journal.OpenFSJournal(lr, disabled)
 	if err != nil {
@@ -36,3 +33,4 @@ func OpenFilesystemJournal(lr repo.LockedRepo, lc fx.Lifecycle, disabled journal
 
 	return jrnl, err
 }
+*/

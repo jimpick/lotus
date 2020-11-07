@@ -55,21 +55,21 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/influxdata/influxdb1-client v0.0.0-20191209144304-8bf82d3c094d
 	github.com/ipfs/bbloom v0.0.4
-	github.com/ipfs/go-bitswap v0.2.20
+	github.com/ipfs/go-bitswap v0.2.20 // indirect
 	github.com/ipfs/go-block-format v0.0.2
 	github.com/ipfs/go-blockservice v0.1.4-0.20200624145336-a978cec6e834
 	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-cidutil v0.0.2
 	github.com/ipfs/go-datastore v0.4.5
 	github.com/ipfs/go-ds-badger2 v0.1.1-0.20200708190120-187fc06f714e
-	github.com/ipfs/go-ds-leveldb v0.4.2
+	github.com/ipfs/go-ds-leveldb v0.4.2 // indirect
 	github.com/ipfs/go-ds-measure v0.1.0
 	github.com/ipfs/go-ds-pebble v0.0.2-0.20200921225637-ce220f8ac459
 	github.com/ipfs/go-filestore v1.0.0
 	github.com/ipfs/go-fs-lock v0.0.6
 	github.com/ipfs/go-graphsync v0.3.1
 	github.com/ipfs/go-ipfs-blockstore v1.0.1
-	github.com/ipfs/go-ipfs-chunker v0.0.5
+	github.com/ipfs/go-ipfs-chunker v0.0.5 // indirect
 	github.com/ipfs/go-ipfs-ds-help v1.0.0
 	github.com/ipfs/go-ipfs-exchange-interface v0.0.1
 	github.com/ipfs/go-ipfs-exchange-offline v0.0.1
@@ -86,10 +86,10 @@ require (
 	github.com/ipfs/go-unixfs v0.2.4
 	github.com/ipfs/interface-go-ipfs-core v0.2.3
 	github.com/ipld/go-car v0.1.1-0.20200923150018-8cdef32e2da4
-	github.com/ipld/go-ipld-prime v0.5.1-0.20200828233916-988837377a7f
+	github.com/ipld/go-ipld-prime v0.5.1-0.20200828233916-988837377a7f // indirect
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/lib/pq v1.7.0
-	github.com/libp2p/go-eventbus v0.2.1
+	github.com/libp2p/go-eventbus v0.2.1 // indirect
 	github.com/libp2p/go-libp2p v0.11.0
 	github.com/libp2p/go-libp2p-connmgr v0.2.4
 	github.com/libp2p/go-libp2p-core v0.6.1
@@ -120,7 +120,7 @@ require (
 	github.com/raulk/clock v1.1.0
 	github.com/stretchr/testify v1.6.1
 	github.com/supranational/blst v0.1.1
-	github.com/syndtr/goleveldb v1.0.0
+	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/urfave/cli/v2 v2.2.0
 	github.com/whyrusleeping/bencher v0.0.0-20190829221104-bb6607aa8bba
 	github.com/whyrusleeping/cbor-gen v0.0.0-20200826160007-0b9f6c5fb163

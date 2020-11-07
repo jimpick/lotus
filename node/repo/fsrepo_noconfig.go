@@ -19,8 +19,6 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"golang.org/x/xerrors"
 
-	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
-
 	"github.com/filecoin-project/lotus/chain/types"
 )
 
@@ -245,6 +243,7 @@ func (fsr *fsLockedRepo) stillValid() error {
 	return nil
 }
 
+/*
 func (fsr *fsLockedRepo) Stat(path string) (fsutil.FsStat, error) {
 	return fsutil.Statfs(path)
 }
@@ -256,6 +255,7 @@ func (fsr *fsLockedRepo) DiskUsage(path string) (int64, error) {
 	}
 	return si.OnDisk, nil
 }
+*/
 
 func (fsr *fsLockedRepo) SetAPIEndpoint(ma multiaddr.Multiaddr) error {
 	if err := fsr.stillValid(); err != nil {
