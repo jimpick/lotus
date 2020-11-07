@@ -2,7 +2,6 @@ package apistruct
 
 import (
 	"context"
-	"io"
 
 	"github.com/google/uuid"
 	"github.com/ipfs/go-cid"
@@ -22,14 +21,9 @@ import (
 	"github.com/filecoin-project/go-state-types/crypto"
 	"github.com/filecoin-project/go-state-types/dline"
 	stnetwork "github.com/filecoin-project/go-state-types/network"
-	"github.com/filecoin-project/lotus/extern/sector-storage/sealtasks"
-	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
-	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	marketevents "github.com/filecoin-project/lotus/markets/loggers"
-	"github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/api"
-	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/paych"
 	"github.com/filecoin-project/lotus/chain/types"
@@ -359,6 +353,7 @@ type StorageMinerStruct struct {
 }
 */
 
+/*
 type WorkerStruct struct {
 	Internal struct {
 		// TODO: lower perms
@@ -393,6 +388,7 @@ type WorkerStruct struct {
 		Session        func(context.Context) (uuid.UUID, error) `perm:"admin"`
 	}
 }
+*/
 
 type GatewayStruct struct {
 	Internal struct {
@@ -1487,6 +1483,7 @@ func (c *StorageMinerStruct) CreateBackup(ctx context.Context, fpath string) err
 
 // WorkerStruct
 
+/*
 func (w *WorkerStruct) Version(ctx context.Context) (build.Version, error) {
 	return w.Internal.Version(ctx)
 }
@@ -1574,6 +1571,7 @@ func (w *WorkerStruct) ProcessSession(ctx context.Context) (uuid.UUID, error) {
 func (w *WorkerStruct) Session(ctx context.Context) (uuid.UUID, error) {
 	return w.Internal.Session(ctx)
 }
+*/
 
 func (g GatewayStruct) ChainGetBlockMessages(ctx context.Context, c cid.Cid) (*api.BlockMessages, error) {
 	return g.Internal.ChainGetBlockMessages(ctx, c)

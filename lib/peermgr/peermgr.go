@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/filecoin-project/lotus/build"
-	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"go.uber.org/fx"
 	"go.uber.org/multierr"
 	"golang.org/x/xerrors"
@@ -33,7 +32,7 @@ type MaybePeerMgr struct {
 }
 
 type PeerMgr struct {
-	bootstrappers []peer.AddrInfo
+	// bootstrappers []peer.AddrInfo
 
 	// peerLeads is a set of peers we hear about through the network
 	// and who may be good peers to connect to for expanding our peer set
@@ -61,10 +60,11 @@ type NewFilPeer struct {
 }
 
 // func NewPeerMgr(lc fx.Lifecycle, h host.Host, dht *dht.IpfsDHT, bootstrap dtypes.BootstrapPeers) (*PeerMgr, error) {
-func NewPeerMgr(lc fx.Lifecycle, h host.Host, bootstrap dtypes.BootstrapPeers) (*PeerMgr, error) {
+// func NewPeerMgr(lc fx.Lifecycle, h host.Host, bootstrap dtypes.BootstrapPeers) (*PeerMgr, error) {
+func NewPeerMgr(lc fx.Lifecycle, h host.Host) (*PeerMgr, error) {
 	pm := &PeerMgr{
-		h:             h,
-		bootstrappers: bootstrap,
+		h: h,
+		// bootstrappers: bootstrap,
 
 		peers:     make(map[peer.ID]time.Duration),
 		expanding: make(chan struct{}, 1),
@@ -182,17 +182,19 @@ func (pmgr *PeerMgr) expandPeers() {
 func (pmgr *PeerMgr) doExpand(ctx context.Context) {
 	pcount := pmgr.getPeerCount()
 	if pcount == 0 {
-		if len(pmgr.bootstrappers) == 0 {
-			log.Warn("no peers connected, and no bootstrappers configured")
-			return
-		}
-
-		log.Info("connecting to bootstrap peers")
-		for _, bsp := range pmgr.bootstrappers {
-			if err := pmgr.h.Connect(ctx, bsp); err != nil {
-				log.Warnf("failed to connect to bootstrap peer: %s", err)
+		/*
+			if len(pmgr.bootstrappers) == 0 {
+				log.Warn("no peers connected, and no bootstrappers configured")
+				return
 			}
-		}
+
+			log.Info("connecting to bootstrap peers")
+			for _, bsp := range pmgr.bootstrappers {
+				if err := pmgr.h.Connect(ctx, bsp); err != nil {
+					log.Warnf("failed to connect to bootstrap peer: %s", err)
+				}
+			}
+		*/
 		return
 	}
 

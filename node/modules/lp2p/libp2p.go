@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"time"
 
-	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/types"
 	"golang.org/x/xerrors"
 
@@ -79,14 +78,16 @@ func ConnectionManager(low, high uint, grace time.Duration, protected []string) 
 			cm.Protect(pid, "config-prot")
 		}
 
-		infos, err := build.BuiltinBootstrap()
-		if err != nil {
-			return Libp2pOpts{}, xerrors.Errorf("failed to get bootstrap peers: %w", err)
-		}
+		/*
+				infos, err := build.BuiltinBootstrap()
+				if err != nil {
+					return Libp2pOpts{}, xerrors.Errorf("failed to get bootstrap peers: %w", err)
+				}
 
-		for _, inf := range infos {
-			cm.Protect(inf.ID, "bootstrap")
-		}
+			for _, inf := range infos {
+				cm.Protect(inf.ID, "bootstrap")
+			}
+		*/
 
 		return Libp2pOpts{
 			Opts: []libp2p.Option{libp2p.ConnectionManager(cm)},
