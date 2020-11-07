@@ -53,5 +53,5 @@ type LockedRepo interface {
 	KeyStore() (types.KeyStore, error)
 
 	// Path returns absolute path of the repo
-	Path() string
+	// Path() string
 }

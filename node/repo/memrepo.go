@@ -1,15 +1,9 @@
-// +build ignore
-
 package repo
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	dssync "github.com/ipfs/go-datastore/sync"
@@ -17,8 +11,6 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/filecoin-project/lotus/extern/sector-storage/stores"
-	"github.com/filecoin-project/lotus/node/config"
 )
 
 type MemRepo struct {
@@ -51,9 +43,10 @@ type lockedMemRepo struct {
 
 	tempDir string
 	token   *byte
-	sc      *stores.StorageConfig
+	// sc      *stores.StorageConfig
 }
 
+/*
 func (lmem *lockedMemRepo) GetStorage() (stores.StorageConfig, error) {
 	if err := lmem.checkToken(); err != nil {
 		return stores.StorageConfig{}, err
@@ -78,6 +71,7 @@ func (lmem *lockedMemRepo) SetStorage(c func(*stores.StorageConfig)) error {
 	c(lmem.sc)
 	return nil
 }
+*/
 
 /*
 func (lmem *lockedMemRepo) Stat(path string) (fsutil.FsStat, error) {
@@ -91,7 +85,6 @@ func (lmem *lockedMemRepo) DiskUsage(path string) (int64, error) {
 	}
 	return si.OnDisk, nil
 }
-*/
 
 func (lmem *lockedMemRepo) Path() string {
 	lmem.Lock()
@@ -132,6 +125,7 @@ func (lmem *lockedMemRepo) Path() string {
 	lmem.tempDir = t
 	return t
 }
+*/
 
 var _ Repo = &MemRepo{}
 
