@@ -20,6 +20,7 @@ func NewStorageProviderInfo(address address.Address, miner address.Address, sect
 		}
 		multiaddrs = append(multiaddrs, maddr)
 	}
+	useDaemon := false // FIXME: switch on wss
 
 	return storagemarket.StorageProviderInfo{
 		Address:    address,
@@ -27,6 +28,7 @@ func NewStorageProviderInfo(address address.Address, miner address.Address, sect
 		SectorSize: uint64(sectorSize),
 		PeerID:     peer,
 		Addrs:      multiaddrs,
+		UseDaemon:  useDaemon,
 	}
 }
 
