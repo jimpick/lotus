@@ -12,7 +12,8 @@ import (
 func NoRelay() func() (opts Libp2pOpts, err error) {
 	return func() (opts Libp2pOpts, err error) {
 		// always disabled, it's an eclipse attack vector
-		opts.Opts = append(opts.Opts, libp2p.DisableRelay())
+		// opts.Opts = append(opts.Opts, libp2p.DisableRelay())
+		opts.Opts = append(opts.Opts, libp2p.EnableRelay())
 		return
 	}
 }

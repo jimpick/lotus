@@ -9,6 +9,8 @@ import (
 )
 
 var DefaultTransports = simpleOpt(libp2p.DefaultTransports)
+
+// var DefaultTransports = simpleOpt(libp2p.Transport(ws.New))
 var QUIC = simpleOpt(libp2p.Transport(libp2pquic.NewTransport))
 
 func Security(enabled, preferTLS bool) interface{} {
