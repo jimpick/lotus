@@ -1,7 +1,7 @@
 package marketevents
 
 import (
-	retrievalmarket "github.com/filecoin-project/go-fil-markets/retrievalmarket/apitypes"
+	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/storagemarket"
 	"github.com/filecoin-project/go-state-types/abi"
 	logging "github.com/ipfs/go-log/v2"
