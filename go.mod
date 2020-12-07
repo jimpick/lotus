@@ -140,8 +140,8 @@ replace github.com/supranational/blst => ./extern/fil-blst/blst
 
 replace github.com/filecoin-project/fil-blst => ./extern/fil-blst
 
-replace github.com/filecoin-project/go-fil-markets => ../go-fil-markets
+replace github.com/filecoin-project/go-fil-markets => ../go-fil-markets-old
 
-replace github.com/filecoin-project/go-data-transfer => ../go-data-transfer
+replace github.com/filecoin-project/go-data-transfer => ../go-data-transfer-old
 
-replace github.com/ipfs/go-graphsync => ../go-graphsync
+replace github.com/ipfs/go-graphsync => ../go-graphsync-old
