@@ -1,4 +1,4 @@
-// +build !clientretrieve
+// +build clientretrieve
 
 package client
 
