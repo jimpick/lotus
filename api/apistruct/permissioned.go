@@ -1,3 +1,5 @@
+// +build !clientretrieve
+
 package apistruct
 
 import (
