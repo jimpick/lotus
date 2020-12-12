@@ -1,4 +1,4 @@
-// +build !clientretrieve
+// +build clientretrieve
 
 package main
 
@@ -7,14 +7,14 @@ import (
 	"os"
 
 	"github.com/filecoin-project/lotus/chain/market"
+	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
+	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 
 	gen "github.com/whyrusleeping/cbor-gen"
 
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/exchange"
 	"github.com/filecoin-project/lotus/chain/types"
-	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
-	"github.com/filecoin-project/lotus/extern/sector-storage/storiface"
 	"github.com/filecoin-project/lotus/node/hello"
 	"github.com/filecoin-project/lotus/paychmgr"
 )
@@ -52,10 +52,6 @@ func main() {
 
 	err = gen.WriteMapEncodersToFile("./api/cbor_gen.go", "api",
 		api.PaymentInfo{},
-		api.SealedRef{},
-		api.SealedRefs{},
-		api.SealTicket{},
-		api.SealSeed{},
 	)
 	if err != nil {
 		fmt.Println(err)
