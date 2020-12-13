@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -58,8 +57,8 @@ func flagForAPI(t repo.RepoType) string {
 		return "miner-api-url"
 	case repo.Worker:
 		return "worker-api-url"
-	case repo.ClientQueryAsk:
-		return "client-query-ask-api-url"
+	case repo.RetrieveAPI:
+		return "retrieve-api-url"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
@@ -73,8 +72,8 @@ func flagForRepo(t repo.RepoType) string {
 		return "miner-repo"
 	case repo.Worker:
 		return "worker-repo"
-	case repo.ClientQueryAsk:
-		return "client-query-ask-repo"
+	case repo.RetrieveAPI:
+		return "retrieve-api-repo"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
@@ -88,8 +87,8 @@ func envForRepo(t repo.RepoType) string {
 		return "MINER_API_INFO"
 	case repo.Worker:
 		return "WORKER_API_INFO"
-	case repo.ClientQueryAsk:
-		return "CLIENT_QUERY_ASK_API_INFO"
+	case repo.RetrieveAPI:
+		return "RETRIEVE_API_INFO"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
@@ -103,6 +102,8 @@ func envForRepoDeprecation(t repo.RepoType) string {
 		return "STORAGE_API_INFO"
 	case repo.Worker:
 		return "WORKER_API_INFO"
+	case repo.RetrieveAPI:
+		return "RETRIEVE_API_INFO"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
@@ -186,9 +187,6 @@ func GetAPI(ctx *cli.Context) (api.Common, jsonrpc.ClientCloser, error) {
 		log.Errorf("repoType type does not match the type of repo.RepoType")
 	}
 
-	if tn, ok := ctx.App.Metadata["testnode-storage"]; ok {
-		return tn.(api.StorageMiner), func() {}, nil
-	}
 	if tn, ok := ctx.App.Metadata["testnode-full"]; ok {
 		return tn.(api.FullNode), func() {}, nil
 	}
@@ -212,68 +210,6 @@ func GetFullNodeAPI(ctx *cli.Context) (api.FullNode, jsonrpc.ClientCloser, error
 	}
 
 	return client.NewFullNodeRPC(ctx.Context, addr, headers)
-}
-
-type GetStorageMinerOptions struct {
-	PreferHttp bool
-}
-
-type GetStorageMinerOption func(*GetStorageMinerOptions)
-
-func StorageMinerUseHttp(opts *GetStorageMinerOptions) {
-	opts.PreferHttp = true
-}
-
-func GetStorageMinerAPI(ctx *cli.Context, opts ...GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {
-	var options GetStorageMinerOptions
-	for _, opt := range opts {
-		opt(&options)
-	}
-
-	if tn, ok := ctx.App.Metadata["testnode-storage"]; ok {
-		return tn.(api.StorageMiner), func() {}, nil
-	}
-
-	addr, headers, err := GetRawAPI(ctx, repo.StorageMiner)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if options.PreferHttp {
-		u, err := url.Parse(addr)
-		if err != nil {
-			return nil, nil, xerrors.Errorf("parsing miner api URL: %w", err)
-		}
-
-		switch u.Scheme {
-		case "ws":
-			u.Scheme = "http"
-		case "wss":
-			u.Scheme = "https"
-		}
-
-		addr = u.String()
-	}
-
-	return client.NewStorageMinerRPC(ctx.Context, addr, headers)
-}
-
-func GetWorkerAPI(ctx *cli.Context) (api.WorkerAPI, jsonrpc.ClientCloser, error) {
-	addr, headers, err := GetRawAPI(ctx, repo.Worker)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return client.NewWorkerRPC(ctx.Context, addr, headers)
-}
-
-func GetGatewayAPI(ctx *cli.Context) (api.GatewayAPI, jsonrpc.ClientCloser, error) {
-	addr, headers, err := GetRawAPI(ctx, repo.FullNode)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return client.NewGatewayRPC(ctx.Context, addr, headers)
 }
 
 func DaemonContext(cctx *cli.Context) context.Context {

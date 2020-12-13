@@ -47,6 +47,7 @@ const (
 	StorageMiner
 	Worker
 	Wallet
+	RetrieveAPI
 )
 
 var log = logging.Logger("repo")

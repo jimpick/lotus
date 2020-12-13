@@ -18,6 +18,8 @@ func defConfForType(t RepoType) interface{} {
 		return &struct{}{}
 	case Wallet:
 		return &struct{}{}
+	case RetrieveAPI:
+		return &struct{}{}
 	default:
 		panic(fmt.Sprintf("unknown RepoType(%d)", int(t)))
 	}
