@@ -12,19 +12,19 @@ import (
 
 	"github.com/filecoin-project/lotus/chain/actors/builtin/paych"
 	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/filecoin-project/lotus/node/impl/full"
 	payapi "github.com/filecoin-project/lotus/node/impl/paych"
+	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 )
 
 type retrievalClientNode struct {
-	chainAPI full.ChainAPI
+	chainAPI moduleapi.ChainModuleAPI
 	payAPI   payapi.PaychAPI
-	stateAPI full.StateAPI
+	stateAPI moduleapi.StateModuleAPI
 }
 
 // NewRetrievalClientNode returns a new node adapter for a retrieval client that talks to the
 // Lotus Node
-func NewRetrievalClientNode(payAPI payapi.PaychAPI, chainAPI full.ChainAPI, stateAPI full.StateAPI) retrievalmarket.RetrievalClientNode {
+func NewRetrievalClientNode(payAPI payapi.PaychAPI, chainAPI moduleapi.ChainModuleAPI, stateAPI moduleapi.StateModuleAPI) retrievalmarket.RetrievalClientNode {
 	return &retrievalClientNode{payAPI: payAPI, chainAPI: chainAPI, stateAPI: stateAPI}
 }
 

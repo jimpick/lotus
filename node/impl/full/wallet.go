@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/chain/wallet"
 	"github.com/filecoin-project/lotus/lib/sigs"
+	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 )
 
 type WalletAPI struct {
@@ -22,7 +23,7 @@ type WalletAPI struct {
 
 	StateManagerAPI stmgr.StateManagerAPI
 	Default         wallet.Default
-	api.WalletAPI
+	moduleapi.WalletModuleAPI
 }
 
 func (a *WalletAPI) WalletBalance(ctx context.Context, addr address.Address) (types.BigInt, error) {
@@ -40,7 +41,7 @@ func (a *WalletAPI) WalletSign(ctx context.Context, k address.Address, msg []byt
 	if err != nil {
 		return nil, xerrors.Errorf("failed to resolve ID address: %w", keyAddr)
 	}
-	return a.WalletAPI.WalletSign(ctx, keyAddr, msg, api.MsgMeta{
+	return a.WalletModuleAPI.WalletSign(ctx, keyAddr, msg, api.MsgMeta{
 		Type: api.MTUnknown,
 	})
 }
@@ -56,7 +57,7 @@ func (a *WalletAPI) WalletSignMessage(ctx context.Context, k address.Address, ms
 		return nil, xerrors.Errorf("serializing message: %w", err)
 	}
 
-	sig, err := a.WalletAPI.WalletSign(ctx, keyAddr, mb.Cid().Bytes(), api.MsgMeta{
+	sig, err := a.WalletModuleAPI.WalletSign(ctx, keyAddr, mb.Cid().Bytes(), api.MsgMeta{
 		Type:  api.MTChainMsg,
 		Extra: mb.RawData(),
 	})
