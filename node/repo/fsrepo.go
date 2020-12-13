@@ -3,7 +3,6 @@ package repo
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -49,21 +48,6 @@ const (
 	Worker
 	Wallet
 )
-
-func defConfForType(t RepoType) interface{} {
-	switch t {
-	case FullNode:
-		return config.DefaultFullNode()
-	case StorageMiner:
-		return config.DefaultStorageMiner()
-	case Worker:
-		return &struct{}{}
-	case Wallet:
-		return &struct{}{}
-	default:
-		panic(fmt.Sprintf("unknown RepoType(%d)", int(t)))
-	}
-}
 
 var log = logging.Logger("repo")
 

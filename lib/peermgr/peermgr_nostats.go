@@ -1,4 +1,4 @@
-// +build !clientretrieve
+// +build clientretrieve
 
 package peermgr
 
@@ -8,9 +8,7 @@ import (
 	"time"
 
 	"github.com/filecoin-project/lotus/build"
-	"github.com/filecoin-project/lotus/metrics"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
-	"go.opencensus.io/stats"
 	"go.uber.org/fx"
 	"go.uber.org/multierr"
 	"golang.org/x/xerrors"
@@ -170,7 +168,6 @@ func (pmgr *PeerMgr) Run(ctx context.Context) {
 			} else if pcount > pmgr.maxFilPeers {
 				log.Debugf("peer count about threshold: %d > %d", pcount, pmgr.maxFilPeers)
 			}
-			stats.Record(ctx, metrics.PeerCount.M(int64(pmgr.getPeerCount())))
 		case <-pmgr.done:
 			log.Warn("exiting peermgr run")
 			return

@@ -1,9 +1,8 @@
-// +build !clientretrieve
+// +build clientretrieve
 
 package lp2p
 
 import (
-	"context"
 	"encoding/json"
 	"time"
 
@@ -13,12 +12,10 @@ import (
 	pubsub_pb "github.com/libp2p/go-libp2p-pubsub/pb"
 	blake2b "github.com/minio/blake2b-simd"
 	ma "github.com/multiformats/go-multiaddr"
-	"go.opencensus.io/stats"
 	"go.uber.org/fx"
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/lotus/build"
-	"github.com/filecoin-project/lotus/metrics"
 	"github.com/filecoin-project/lotus/node/config"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
@@ -324,104 +321,10 @@ func GossipSub(in GossipIn) (service *pubsub.PubSub, err error) {
 				pubsub.NewAllowlistSubscriptionFilter(allowTopics...),
 				100)))
 
-	// tracer
-	if in.Cfg.RemoteTracer != "" {
-		a, err := ma.NewMultiaddr(in.Cfg.RemoteTracer)
-		if err != nil {
-			return nil, err
-		}
-
-		pi, err := peer.AddrInfoFromP2pAddr(a)
-		if err != nil {
-			return nil, err
-		}
-
-		tr, err := pubsub.NewRemoteTracer(context.TODO(), in.Host, *pi)
-		if err != nil {
-			return nil, err
-		}
-
-		trw := newTracerWrapper(tr, build.BlocksTopic(in.Nn))
-		options = append(options, pubsub.WithEventTracer(trw))
-	} else {
-		// still instantiate a tracer for collecting metrics
-		trw := newTracerWrapper(nil)
-		options = append(options, pubsub.WithEventTracer(trw))
-	}
-
 	return pubsub.NewGossipSub(helpers.LifecycleCtx(in.Mctx, in.Lc), in.Host, options...)
 }
 
 func HashMsgId(m *pubsub_pb.Message) string {
 	hash := blake2b.Sum256(m.Data)
 	return string(hash[:])
-}
-
-func newTracerWrapper(tr pubsub.EventTracer, topics ...string) pubsub.EventTracer {
-	var topicsMap map[string]struct{}
-	if len(topics) > 0 {
-		topicsMap = make(map[string]struct{})
-		for _, topic := range topics {
-			topicsMap[topic] = struct{}{}
-		}
-	}
-
-	return &tracerWrapper{tr: tr, topics: topicsMap}
-}
-
-type tracerWrapper struct {
-	tr     pubsub.EventTracer
-	topics map[string]struct{}
-}
-
-func (trw *tracerWrapper) traceMessage(topic string) bool {
-	_, ok := trw.topics[topic]
-	return ok
-}
-
-func (trw *tracerWrapper) Trace(evt *pubsub_pb.TraceEvent) {
-	// this filters the trace events reported to the remote tracer to include only
-	// JOIN/LEAVE/GRAFT/PRUNE/PUBLISH/DELIVER. This significantly reduces bandwidth usage and still
-	// collects enough data to recover the state of the mesh and compute message delivery latency
-	// distributions.
-	// Furthermore, we only trace message publication and deliveries for specified topics
-	// (here just the blocks topic).
-	switch evt.GetType() {
-	case pubsub_pb.TraceEvent_PUBLISH_MESSAGE:
-		stats.Record(context.TODO(), metrics.PubsubPublishMessage.M(1))
-		if trw.tr != nil && trw.traceMessage(evt.GetPublishMessage().GetTopic()) {
-			trw.tr.Trace(evt)
-		}
-	case pubsub_pb.TraceEvent_DELIVER_MESSAGE:
-		stats.Record(context.TODO(), metrics.PubsubDeliverMessage.M(1))
-		if trw.tr != nil && trw.traceMessage(evt.GetDeliverMessage().GetTopic()) {
-			trw.tr.Trace(evt)
-		}
-	case pubsub_pb.TraceEvent_REJECT_MESSAGE:
-		stats.Record(context.TODO(), metrics.PubsubRejectMessage.M(1))
-	case pubsub_pb.TraceEvent_DUPLICATE_MESSAGE:
-		stats.Record(context.TODO(), metrics.PubsubDuplicateMessage.M(1))
-	case pubsub_pb.TraceEvent_JOIN:
-		if trw.tr != nil {
-			trw.tr.Trace(evt)
-		}
-	case pubsub_pb.TraceEvent_LEAVE:
-		if trw.tr != nil {
-			trw.tr.Trace(evt)
-		}
-	case pubsub_pb.TraceEvent_GRAFT:
-		if trw.tr != nil {
-			trw.tr.Trace(evt)
-		}
-	case pubsub_pb.TraceEvent_PRUNE:
-		if trw.tr != nil {
-			trw.tr.Trace(evt)
-		}
-	case pubsub_pb.TraceEvent_RECV_RPC:
-		stats.Record(context.TODO(), metrics.PubsubRecvRPC.M(1))
-	case pubsub_pb.TraceEvent_SEND_RPC:
-		stats.Record(context.TODO(), metrics.PubsubSendRPC.M(1))
-	case pubsub_pb.TraceEvent_DROP_RPC:
-		stats.Record(context.TODO(), metrics.PubsubDropRPC.M(1))
-	}
 }
