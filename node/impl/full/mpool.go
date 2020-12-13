@@ -14,11 +14,8 @@ import (
 	"github.com/filecoin-project/lotus/chain/messagesigner"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
+	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 )
-
-type MpoolModuleAPI interface {
-	MpoolPush(ctx context.Context, smsg *types.SignedMessage) (cid.Cid, error)
-}
 
 // MpoolModule provides a default implementation of MpoolModuleAPI.
 // It can be swapped out with another implementation through Dependency
@@ -29,7 +26,7 @@ type MpoolModule struct {
 	Mpool *messagepool.MessagePool
 }
 
-var _ MpoolModuleAPI = (*MpoolModule)(nil)
+var _ moduleapi.MpoolModuleAPI = (*MpoolModule)(nil)
 
 type MpoolAPI struct {
 	fx.In

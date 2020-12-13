@@ -11,8 +11,8 @@ import (
 	"github.com/filecoin-project/lotus/chain/actors"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/market"
 	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/filecoin-project/lotus/node/impl/full"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
+	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	logging "github.com/ipfs/go-log"
@@ -26,8 +26,8 @@ var log = logging.Logger("market_adapter")
 type FundManagerAPI struct {
 	fx.In
 
-	full.StateAPI
-	full.MpoolAPI
+	moduleapi.StateModuleAPI
+	moduleapi.MpoolModuleAPI
 }
 
 // fundManagerAPI is the specific methods called by the FundManager

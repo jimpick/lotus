@@ -19,8 +19,8 @@ import (
 	"github.com/filecoin-project/lotus/chain/actors/builtin/paych"
 	"github.com/filecoin-project/lotus/chain/stmgr"
 	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/filecoin-project/lotus/node/impl/full"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
+	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 )
 
 var log = logging.Logger("paych")
@@ -31,8 +31,8 @@ var errProofNotSupported = errors.New("payment channel proof parameter is not su
 type PaychAPI struct {
 	fx.In
 
-	full.MpoolAPI
-	full.StateAPI
+	moduleapi.MpoolModuleAPI
+	moduleapi.StateModuleAPI
 }
 
 // stateManagerAPI defines the methods needed from StateManager
