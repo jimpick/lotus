@@ -53,8 +53,6 @@ import (
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/markets/utils"
-	"github.com/filecoin-project/lotus/node/impl/full"
-	"github.com/filecoin-project/lotus/node/impl/paych"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 	"github.com/filecoin-project/lotus/node/repo/importmgr"
@@ -67,10 +65,10 @@ const dealStartBufferHours uint64 = 49
 type API struct {
 	fx.In
 
-	full.ChainAPI
-	full.WalletAPI
-	paych.PaychAPI
-	moduleapi.StateAPI
+	moduleapi.ChainModuleAPI
+	api.WalletAPI
+	moduleapi.PaychModuleAPI
+	moduleapi.StateModuleAPI
 
 	SMDealClient storagemarket.StorageClient
 	RetDiscovery discovery.PeerResolver

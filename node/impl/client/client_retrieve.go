@@ -36,9 +36,7 @@ import (
 	marketevents "github.com/filecoin-project/lotus/markets/loggers"
 
 	"github.com/filecoin-project/lotus/api"
-	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
-	"github.com/filecoin-project/lotus/node/impl/paych"
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/moduleapi"
 	"github.com/filecoin-project/lotus/node/repo/importmgr"
@@ -53,13 +51,12 @@ type API struct {
 
 	moduleapi.ChainModuleAPI
 	api.WalletAPI
-	paych.PaychAPI
+	moduleapi.PaychModuleAPI
 	moduleapi.StateModuleAPI
 
 	SMDealClient storagemarket.StorageClient
 	RetDiscovery discovery.PeerResolver
 	Retrieval    rm.RetrievalClient
-	Chain        *store.ChainStore
 
 	Imports dtypes.ClientImportMgr
 
