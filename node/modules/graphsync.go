@@ -1,3 +1,5 @@
+// +build !clientretrieve
+
 package modules
 
 import (

@@ -10,7 +10,6 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/go-state-types/dline"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
@@ -30,8 +29,6 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	rm "github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/shared"
-	"github.com/filecoin-project/go-fil-markets/storagemarket"
-	"github.com/filecoin-project/go-state-types/abi"
 
 	marketevents "github.com/filecoin-project/lotus/markets/loggers"
 
@@ -50,11 +47,9 @@ type API struct {
 	fx.In
 
 	moduleapi.ChainModuleAPI
-	api.WalletAPI
 	moduleapi.PaychModuleAPI
 	moduleapi.StateModuleAPI
 
-	SMDealClient storagemarket.StorageClient
 	RetDiscovery discovery.PeerResolver
 	Retrieval    rm.RetrievalClient
 
@@ -64,14 +59,6 @@ type API struct {
 	RetrievalStoreMgr dtypes.ClientRetrievalStoreManager
 	DataTransfer      dtypes.ClientDataTransfer
 	Host              host.Host
-}
-
-func calcDealExpiration(minDuration uint64, md *dline.Info, startEpoch abi.ChainEpoch) abi.ChainEpoch {
-	// Make sure we give some time for the miner to seal
-	minExp := startEpoch + abi.ChainEpoch(minDuration)
-
-	// Align on miners ProvingPeriodBoundary
-	return minExp + md.WPoStProvingPeriod - (minExp % md.WPoStProvingPeriod) + (md.PeriodStart % md.WPoStProvingPeriod) - 1
 }
 
 func (a *API) imgr() *importmgr.Mgr {
