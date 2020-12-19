@@ -1,4 +1,5 @@
 // +build clientretrieve
+// +build !js
 
 package repo
 

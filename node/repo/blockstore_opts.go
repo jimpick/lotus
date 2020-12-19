@@ -1,3 +1,5 @@
+// +build !js
+
 package repo
 
 import badgerbs "github.com/filecoin-project/lotus/lib/blockstore/badger"
