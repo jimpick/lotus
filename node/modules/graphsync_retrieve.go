@@ -3,8 +3,6 @@
 package modules
 
 import (
-	"fmt"
-
 	"github.com/filecoin-project/lotus/node/modules/dtypes"
 	"github.com/filecoin-project/lotus/node/modules/helpers"
 	"github.com/filecoin-project/lotus/node/repo"
@@ -22,9 +20,7 @@ func Graphsync(parallelTransfers uint64) func(mctx helpers.MetricsCtx, lc fx.Lif
 		loader := storeutil.LoaderForBlockstore(clientBs)
 		storer := storeutil.StorerForBlockstore(clientBs)
 
-		fmt.Printf("Jim1\n")
 		gs := graphsyncimpl.New(helpers.LifecycleCtx(mctx, lc), graphsyncNetwork, loader, storer, graphsyncimpl.RejectAllRequestsByDefault(), graphsyncimpl.MaxInProgressRequests(parallelTransfers))
-		fmt.Printf("Jim2\n")
 		return gs, nil
 	}
 }

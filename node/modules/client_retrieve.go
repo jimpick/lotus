@@ -5,7 +5,6 @@ package modules
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -126,12 +125,10 @@ func NewClientGraphsyncDataTransfer(lc fx.Lifecycle, h host.Host, gs dtypes.Grap
 		return nil, err
 	}
 
-	fmt.Printf("Jim5\n")
 	dt, err := dtimpl.NewDataTransfer(dtDs, r.Fs(), filepath.Join(r.Path(), "data-transfer"), net, transport, sc)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Jim6\n")
 
 	dt.OnReady(marketevents.ReadyLogger("client data transfer"))
 	lc.Append(fx.Hook{
@@ -143,7 +140,6 @@ func NewClientGraphsyncDataTransfer(lc fx.Lifecycle, h host.Host, gs dtypes.Grap
 			return dt.Stop(ctx)
 		},
 	})
-	fmt.Printf("Jim7\n")
 	return dt, nil
 }
 

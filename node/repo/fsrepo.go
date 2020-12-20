@@ -20,6 +20,7 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/multiformats/go-base32"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/spf13/afero"
 	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/lotus/extern/sector-storage/fsutil"
@@ -39,6 +40,7 @@ var ErrRepoExists = xerrors.New("repo exists")
 type FsRepo struct {
 	path       string
 	configPath string
+	afs        *afero.Afero
 }
 
 var _ Repo = &FsRepo{}
@@ -50,9 +52,13 @@ func NewFS(path string) (*FsRepo, error) {
 		return nil, err
 	}
 
+	fs := afero.NewOsFs()
+	afs := &afero.Afero{Fs: fs}
+
 	return &FsRepo{
 		path:       path,
 		configPath: filepath.Join(path, fsConfig),
+		afs:        afs,
 	}, nil
 }
 
@@ -201,6 +207,7 @@ func (fsr *FsRepo) Lock(repoType RepoType) (LockedRepo, error) {
 		configPath: fsr.configPath,
 		repoType:   repoType,
 		closer:     closer,
+		afs:        fsr.afs,
 	}, nil
 }
 
@@ -232,6 +239,8 @@ type fsLockedRepo struct {
 
 	storageLk sync.Mutex
 	configLk  sync.Mutex
+
+	afs *afero.Afero
 }
 
 func (fsr *fsLockedRepo) Path() string {
@@ -536,4 +545,8 @@ func (fsr *fsLockedRepo) Delete(name string) error {
 		return xerrors.Errorf("deleting key '%s': %w", name, err)
 	}
 	return nil
+}
+
+func (fsr *fsLockedRepo) Fs() *afero.Afero {
+	return fsr.afs
 }
