@@ -2,10 +2,13 @@ package repo
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/spf13/afero"
 
 	"github.com/google/uuid"
 	"github.com/ipfs/go-datastore"
@@ -43,6 +46,7 @@ type MemRepo struct {
 		sync.Mutex
 		val interface{}
 	}
+	afs *afero.Afero
 }
 
 type lockedMemRepo struct {
@@ -53,6 +57,10 @@ type lockedMemRepo struct {
 	tempDir string
 	token   *byte
 	sc      *stores.StorageConfig
+}
+
+func (lmem *lockedMemRepo) Fs() *afero.Afero {
+	return lmem.mem.afs
 }
 
 func (lmem *lockedMemRepo) GetStorage() (stores.StorageConfig, error) {
@@ -100,10 +108,14 @@ func (lmem *lockedMemRepo) Path() string {
 		return lmem.tempDir
 	}
 
-	t, err := ioutil.TempDir(os.TempDir(), "lotus-memrepo-temp-")
+	fmt.Printf("Jim3\n")
+	// t, err := ioutil.TempDir(os.TempDir(), "lotus-memrepo-temp-")
+	t, err := lmem.mem.afs.TempDir("/tmp2", "lotus-memrepo-temp-")
+	// t, err := lmem.mem.afs.TempDir("", "lotus-memrepo-temp-")
 	if err != nil {
 		panic(err) // only used in tests, probably fine
 	}
+	fmt.Printf("Jim4\n")
 
 	if lmem.t == StorageMiner {
 		if err := config.WriteStorageFile(filepath.Join(t, fsStorageConfig), stores.StorageConfig{
@@ -158,12 +170,16 @@ func NewMemory(opts *MemRepoOptions) *MemRepo {
 		opts.KeyStore = make(map[string]types.KeyInfo)
 	}
 
+	fs := afero.NewMemMapFs()
+	afs := &afero.Afero{Fs: fs}
+
 	return &MemRepo{
 		repoLock:   make(chan struct{}, 1),
 		blockstore: blockstore.WrapIDStore(blockstore.NewTemporarySync()),
 		datastore:  opts.Ds,
 		configF:    opts.ConfigF,
 		keystore:   opts.KeyStore,
+		afs:        afs,
 	}
 }
 

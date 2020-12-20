@@ -3,6 +3,8 @@ package repo
 import (
 	"errors"
 
+	"github.com/spf13/afero"
+
 	"github.com/filecoin-project/lotus/lib/blockstore"
 	"github.com/ipfs/go-datastore"
 	"github.com/multiformats/go-multiaddr"
@@ -77,4 +79,7 @@ type LockedRepo interface {
 
 	// Path returns absolute path of the repo
 	Path() string
+
+	// Fs returns the Afero virtual filesystem instance
+	Fs() *afero.Afero
 }
