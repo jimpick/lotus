@@ -54,3 +54,9 @@ func OpenFilesystemJournal(lr repo.LockedRepo, lc fx.Lifecycle, disabled journal
 
 	return jrnl, err
 }
+
+func OpenNilJournal(lr repo.LockedRepo, lc fx.Lifecycle, disabled journal.DisabledEvents) (journal.Journal, error) {
+	jrnl := journal.NilJournal()
+
+	return jrnl, nil
+}
