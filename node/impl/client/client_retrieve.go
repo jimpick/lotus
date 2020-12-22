@@ -183,6 +183,7 @@ type retrievalSubscribeEvent struct {
 }
 
 func readSubscribeEvents(ctx context.Context, dealID retrievalmarket.DealID, subscribeEvents chan retrievalSubscribeEvent, events chan marketevents.RetrievalEvent) error {
+	fmt.Printf("Jim readSubscribeEvents 1\n")
 	for {
 		var subscribeEvent retrievalSubscribeEvent
 		select {
@@ -196,6 +197,14 @@ func readSubscribeEvents(ctx context.Context, dealID retrievalmarket.DealID, sub
 				continue
 			}
 		}
+
+		eventState := subscribeEvent.state
+		fmt.Printf("Jim > Recv: %s, Paid %s, %s (%s)\n",
+			types.SizeStr(types.NewInt(eventState.TotalReceived)),
+			types.FIL(eventState.FundsSpent),
+			retrievalmarket.ClientEvents[subscribeEvent.event],
+			retrievalmarket.DealStatuses[eventState.Status],
+		)
 
 		select {
 		case <-ctx.Done():
@@ -231,6 +240,32 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 		}
 	}
 
+	/*
+		mi, err := a.StateMinerInfo(ctx, order.MinerPeer.Address, types.EmptyTSK)
+		if err != nil {
+			finish(err)
+			return
+		}
+
+		fmt.Printf("Jim client_retrieve minerInfo %v\n", mi)
+		maddrs := make([]multiaddr.Multiaddr, 0, len(mi.Multiaddrs))
+		for _, a := range mi.Multiaddrs {
+			maddr, err := multiaddr.NewMultiaddrBytes(a)
+			if err != nil {
+				finish(err)
+				return
+			}
+			fmt.Printf("Jim maddr %v\n", maddr)
+			maddrs = append(maddrs, maddr)
+			//	for _, p := range maddr.Protocols() {
+			//		if p.Code == multiaddr.P_WSS {
+			//			useDaemon = false
+			//			break
+			//		}
+			// 	}
+		}
+	*/
+
 	if order.MinerPeer.ID == "" {
 		mi, err := a.StateMinerInfo(ctx, order.Miner, types.EmptyTSK)
 		if err != nil {
@@ -243,6 +278,7 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 			Address: order.Miner,
 		}
 	}
+	// a.Host.Peerstore().AddAddrs(order.MinerPeer.ID, maddrs, 8*time.Hour)
 
 	if order.Size == 0 {
 		finish(xerrors.Errorf("cannot make retrieval deal for zero bytes"))
