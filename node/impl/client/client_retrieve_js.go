@@ -1,11 +1,12 @@
 // +build clientretrieve
-// +build !js
+// +build js
 
 package client
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"golang.org/x/xerrors"
@@ -358,6 +359,7 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 
 	rdag := store.DAGService()
 
+	fmt.Printf("Jim impl client_retrieve 1\n")
 	if ref.IsCAR {
 		f, err := os.OpenFile(ref.Path, os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
@@ -372,6 +374,7 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 		finish(f.Close())
 		return
 	}
+	fmt.Printf("Jim impl client_retrieve 2\n")
 
 	nd, err := rdag.Get(ctx, order.Root)
 	if err != nil {
@@ -383,25 +386,25 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 		finish(xerrors.Errorf("ClientRetrieve: %w", err))
 		return
 	}
-	/*
-		size, err := file.Size()
-		if err != nil {
-			finish(xerrors.Errorf("ClientRetrieve: %w", err))
-			return
+	size, err := file.Size()
+	if err != nil {
+		finish(xerrors.Errorf("ClientRetrieve: %w", err))
+		return
+	}
+	fmt.Printf("Jim impl client_retrieve size %v\n", size)
+	readablefile := files.ToFile(file)
+	b := make([]byte, 800)
+	for {
+		n, err := readablefile.Read(b)
+		// fmt.Printf("n = %v err = %v b = %v\n", n, err, b)
+		fmt.Printf("n = %v err = %v\n", n, err)
+		// fmt.Printf("b[:n] = %q\n", b[:n])
+		if err == io.EOF {
+			break
 		}
-		fmt.Printf("Jim impl client_retrieve size %v\n", size)
-		readablefile := files.ToFile(file)
-		b := make([]byte, 8)
-		for {
-			n, err := readablefile.Read(b)
-			fmt.Printf("n = %v err = %v b = %v\n", n, err, b)
-			fmt.Printf("b[:n] = %q\n", b[:n])
-			if err == io.EOF {
-				break
-			}
-		}
-	*/
-	finish(files.WriteTo(file, ref.Path))
+	}
+	// finish(files.WriteTo(file, ref.Path))
+	fmt.Printf("Jim impl client_retrieve 3\n")
 	return
 }
 
