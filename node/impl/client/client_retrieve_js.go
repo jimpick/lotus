@@ -6,7 +6,6 @@ package client
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 
 	"golang.org/x/xerrors"
@@ -43,7 +42,7 @@ import (
 
 var DefaultHashFunction = uint64(mh.BLAKE2B_MIN + 31)
 
-var takeouts []files.Node
+var fileDeposits []files.Node
 
 const dealStartBufferHours uint64 = 49
 
@@ -66,7 +65,7 @@ type API struct {
 }
 
 func init() {
-	takeouts = make([]files.Node, 0)
+	fileDeposits = make([]files.Node, 0)
 }
 
 func (a *API) imgr() *importmgr.Mgr {
@@ -161,16 +160,20 @@ func (a *API) makeRetrievalQuery(ctx context.Context, rp rm.RetrievalPeer, paylo
 
 func (a *API) ClientRetrieve(ctx context.Context, order api.RetrievalOrder, ref *api.FileRef) (int, error) {
 	events := make(chan marketevents.RetrievalEvent)
-	takeoutChan := make(chan int)
-	go a.clientRetrieve(ctx, order, ref, events, takeoutChan)
+	go a.clientRetrieve(ctx, order, ref, events)
+
+	fileDepositID := -1
 
 	for {
 		select {
 		case evt, ok := <-events:
 			if !ok { // done successfully
 				fmt.Printf("Jim ClientRetrieve success\n")
-				takeoutId := <-takeoutChan
-				return takeoutId, nil
+				return fileDepositID, nil
+			}
+
+			if evt.Event == retrievalmarket.ClientEventFileDeposited {
+				fileDepositID = evt.FileDepositID
 			}
 
 			if evt.Err != "" {
@@ -184,8 +187,7 @@ func (a *API) ClientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 
 func (a *API) ClientRetrieveWithEvents(ctx context.Context, order api.RetrievalOrder, ref *api.FileRef) (<-chan marketevents.RetrievalEvent, error) {
 	events := make(chan marketevents.RetrievalEvent)
-	takeoutChan := make(chan int)
-	go a.clientRetrieve(ctx, order, ref, events, takeoutChan)
+	go a.clientRetrieve(ctx, order, ref, events)
 	return events, nil
 }
 
@@ -243,7 +245,7 @@ func readSubscribeEvents(ctx context.Context, dealID retrievalmarket.DealID, sub
 	}
 }
 
-func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref *api.FileRef, events chan marketevents.RetrievalEvent, takeoutChan chan int) {
+func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref *api.FileRef, events chan marketevents.RetrievalEvent) {
 	defer close(events)
 
 	finish := func(e error) {
@@ -396,29 +398,34 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 		finish(xerrors.Errorf("ClientRetrieve: %w", err))
 		return
 	}
-	takeouts = append(takeouts, file)
-	takeoutId := len(takeouts)
-	fmt.Printf("Successful retrieval, takeoutId: %v\n", takeoutId)
+	fileDeposits = append(fileDeposits, file)
+	fileDepositID := len(fileDeposits)
+	fmt.Printf("Successful retrieval, fileDepositID: %v\n", fileDepositID)
 	size, err := file.Size()
 	if err != nil {
 		finish(xerrors.Errorf("ClientRetrieve: %w", err))
 		return
 	}
 	fmt.Printf("Jim impl client_retrieve size %v\n", size)
-	readablefile := files.ToFile(file)
-	b := make([]byte, 800)
-	for {
-		n, err := readablefile.Read(b)
-		// fmt.Printf("n = %v err = %v b = %v\n", n, err, b)
-		fmt.Printf("n = %v err = %v\n", n, err)
-		// fmt.Printf("b[:n] = %q\n", b[:n])
-		if err == io.EOF {
-			break
+	/*
+		readablefile := files.ToFile(file)
+		b := make([]byte, 800)
+		for {
+			n, err := readablefile.Read(b)
+			// fmt.Printf("n = %v err = %v b = %v\n", n, err, b)
+			fmt.Printf("n = %v err = %v\n", n, err)
+			// fmt.Printf("b[:n] = %q\n", b[:n])
+			if err == io.EOF {
+				break
+			}
 		}
-	}
+	*/
 	// finish(files.WriteTo(file, ref.Path))
 	fmt.Printf("Jim impl client_retrieve 3\n")
-	// takeoutChan <- takeoutId
+	events <- marketevents.RetrievalEvent{
+		Event:         retrievalmarket.ClientEventFileDeposited,
+		FileDepositID: fileDepositID,
+	}
 	return
 }
 

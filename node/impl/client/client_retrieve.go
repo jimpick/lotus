@@ -152,7 +152,7 @@ func (a *API) makeRetrievalQuery(ctx context.Context, rp rm.RetrievalPeer, paylo
 	}
 }
 
-func (a *API) ClientRetrieve(ctx context.Context, order api.RetrievalOrder, ref *api.FileRef) error {
+func (a *API) ClientRetrieve(ctx context.Context, order api.RetrievalOrder, ref *api.FileRef) (int, error) {
 	events := make(chan marketevents.RetrievalEvent)
 	go a.clientRetrieve(ctx, order, ref, events)
 
@@ -160,14 +160,14 @@ func (a *API) ClientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 		select {
 		case evt, ok := <-events:
 			if !ok { // done successfully
-				return nil
+				return -1, nil
 			}
 
 			if evt.Err != "" {
-				return xerrors.Errorf("retrieval failed: %s", evt.Err)
+				return -1, xerrors.Errorf("retrieval failed: %s", evt.Err)
 			}
 		case <-ctx.Done():
-			return xerrors.Errorf("retrieval timed out")
+			return -1, xerrors.Errorf("retrieval timed out")
 		}
 	}
 }

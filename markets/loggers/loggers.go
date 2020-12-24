@@ -64,4 +64,5 @@ type RetrievalEvent struct {
 	BytesReceived uint64
 	FundsSpent    abi.TokenAmount
 	Err           string
+	FileDepositID int
 }
