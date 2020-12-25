@@ -6,7 +6,9 @@ package client
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"syscall/js"
 
 	"golang.org/x/xerrors"
 
@@ -42,7 +44,7 @@ import (
 
 var DefaultHashFunction = uint64(mh.BLAKE2B_MIN + 31)
 
-var fileDeposits []files.Node
+var fileDeposits [][]byte
 
 const dealStartBufferHours uint64 = 49
 
@@ -65,7 +67,8 @@ type API struct {
 }
 
 func init() {
-	fileDeposits = make([]files.Node, 0)
+	fileDeposits = make([][]byte, 0)
+	js.Global().Set("collectFileDeposit", js.FuncOf(collectFileDeposit))
 }
 
 func (a *API) imgr() *importmgr.Mgr {
@@ -398,8 +401,14 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 		finish(xerrors.Errorf("ClientRetrieve: %w", err))
 		return
 	}
-	fileDeposits = append(fileDeposits, file)
-	fileDepositID := len(fileDeposits)
+	readablefile := files.ToFile(file)
+	data, err := ioutil.ReadAll(readablefile)
+	if err != nil {
+		finish(xerrors.Errorf("ClientRetrieve: %w", err))
+		return
+	}
+	fileDeposits = append(fileDeposits, data)
+	fileDepositID := len(fileDeposits) - 1
 	fmt.Printf("Successful retrieval, fileDepositID: %v\n", fileDepositID)
 	size, err := file.Size()
 	if err != nil {
@@ -427,6 +436,21 @@ func (a *API) clientRetrieve(ctx context.Context, order api.RetrievalOrder, ref 
 		FileDepositID: fileDepositID,
 	}
 	return
+}
+
+func collectFileDeposit(this js.Value, args []js.Value) interface{} {
+	// fmt.Printf("Jim collectFileDeposit %v\n", args)
+	fileDepositID := args[0].Int()
+	// fmt.Printf("Jim fileDepositID %v\n", fileDepositID)
+	data := fileDeposits[fileDepositID]
+	// fmt.Printf("Jim data %v\n", data)
+	arrayConstructor := js.Global().Get("Uint8Array")
+	dataJS := arrayConstructor.New(len(data))
+	// fmt.Printf("Jim2\n")
+	js.CopyBytesToJS(dataJS, data)
+	// fmt.Printf("Jim dataJS %v\n", dataJS)
+	fileDeposits[fileDepositID] = []byte{} // Hopefully free some memory
+	return dataJS
 }
 
 type lenWriter int64
