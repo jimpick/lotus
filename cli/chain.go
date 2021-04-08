@@ -3,14 +3,11 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +30,6 @@ import (
 	lapi "github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/actors"
-	"github.com/filecoin-project/lotus/chain/stmgr"
 	types "github.com/filecoin-project/lotus/chain/types"
 )
 
@@ -54,8 +50,8 @@ var chainCmd = &cli.Command{
 		chainExportCmd,
 		slashConsensusFault,
 		chainGasPriceCmd,
-		chainInspectUsage,
-		chainDecodeCmd,
+		// chainInspectUsage,
+		// chainDecodeCmd,
 	},
 }
 
@@ -381,6 +377,7 @@ var chainSetHeadCmd = &cli.Command{
 	},
 }
 
+/*
 var chainInspectUsage = &cli.Command{
 	Name:  "inspect-usage",
 	Usage: "Inspect block space usage of a given tipset",
@@ -525,6 +522,7 @@ var chainInspectUsage = &cli.Command{
 		return nil
 	},
 }
+*/
 
 var chainListCmd = &cli.Command{
 	Name:    "list",
@@ -1241,6 +1239,7 @@ var chainGasPriceCmd = &cli.Command{
 	},
 }
 
+/*
 var chainDecodeCmd = &cli.Command{
 	Name:  "decode",
 	Usage: "decode various types",
@@ -1320,3 +1319,4 @@ var chainDecodeParamsCmd = &cli.Command{
 		return nil
 	},
 }
+*/

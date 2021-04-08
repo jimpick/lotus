@@ -10,8 +10,6 @@ import (
 
 	"github.com/filecoin-project/lotus/api"
 
-	"github.com/filecoin-project/lotus/paychmgr"
-
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/lotus/build"
 	"github.com/urfave/cli/v2"
@@ -330,7 +328,7 @@ var paychVoucherCmd = &cli.Command{
 		paychVoucherCheckCmd,
 		paychVoucherAddCmd,
 		paychVoucherListCmd,
-		paychVoucherBestSpendableCmd,
+		// paychVoucherBestSpendableCmd,
 		paychVoucherSubmitCmd,
 	},
 }
@@ -507,6 +505,7 @@ var paychVoucherListCmd = &cli.Command{
 	},
 }
 
+/* FIXME !js
 var paychVoucherBestSpendableCmd = &cli.Command{
 	Name:      "best-spendable",
 	Usage:     "Print vouchers with highest value that is currently spendable for each lane",
@@ -555,6 +554,7 @@ var paychVoucherBestSpendableCmd = &cli.Command{
 		return nil
 	},
 }
+*/
 
 func sortVouchers(vouchers []*paych.SignedVoucher) []*paych.SignedVoucher {
 	sort.Slice(vouchers, func(i, j int) bool {

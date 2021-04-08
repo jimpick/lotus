@@ -3,9 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"reflect"
 	"sort"
 	"strconv"
 	"text/tabwriter"
@@ -13,8 +11,6 @@ import (
 	"github.com/filecoin-project/lotus/chain/actors/builtin"
 
 	"github.com/filecoin-project/lotus/chain/actors"
-	"github.com/filecoin-project/lotus/chain/stmgr"
-	cbg "github.com/whyrusleeping/cbor-gen"
 
 	"github.com/filecoin-project/go-state-types/big"
 
@@ -287,7 +283,7 @@ var msigInspectCmd = &cli.Command{
 			return xerrors.Errorf("reading pending transactions: %w", err)
 		}
 
-		decParams := cctx.Bool("decode-params")
+		// decParams := cctx.Bool("decode-params")
 		fmt.Fprintln(cctx.App.Writer, "Transactions: ", len(pending))
 		if len(pending) > 0 {
 			var txids []int64
@@ -306,7 +302,8 @@ var msigInspectCmd = &cli.Command{
 				if tx.To == ownId {
 					target += " (self)"
 				}
-				targAct, err := api.StateGetActor(ctx, tx.To, types.EmptyTSK)
+				// targAct, err := api.StateGetActor(ctx, tx.To, types.EmptyTSK)
+				_, err := api.StateGetActor(ctx, tx.To, types.EmptyTSK)
 				paramStr := fmt.Sprintf("%x", tx.Params)
 
 				if err != nil {
@@ -316,6 +313,8 @@ var msigInspectCmd = &cli.Command{
 						fmt.Fprintf(w, "%d\t%s\t%d\t%s\t%s\t%s(%d)\t%s\n", txid, "pending", len(tx.Approved), target, types.FIL(tx.Value), "new account, unknown method", tx.Method, paramStr)
 					}
 				} else {
+					panic("Not implemented for WASM")
+					/* FIXME !wasm
 					method := stmgr.MethodsMap[targAct.Code][tx.Method]
 
 					if decParams && tx.Method != 0 {
@@ -333,6 +332,7 @@ var msigInspectCmd = &cli.Command{
 					}
 
 					fmt.Fprintf(w, "%d\t%s\t%d\t%s\t%s\t%s(%d)\t%s\n", txid, "pending", len(tx.Approved), target, types.FIL(tx.Value), method.Name, tx.Method, paramStr)
+					*/
 				}
 			}
 			if err := w.Flush(); err != nil {

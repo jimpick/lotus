@@ -1,27 +1,21 @@
-// +build !js
+// +build js
 
 package cli
+
+// FIXME: duplicated in cli/cmd.go
 
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
-	"os/signal"
-	"strings"
-	"syscall"
+	"syscall/js"
 
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/mitchellh/go-homedir"
 	"github.com/urfave/cli/v2"
-	"golang.org/x/xerrors"
 
 	"github.com/filecoin-project/go-jsonrpc"
-
 	"github.com/filecoin-project/lotus/api"
-	"github.com/filecoin-project/lotus/api/client"
-	cliutil "github.com/filecoin-project/lotus/cli/util"
+	"github.com/filecoin-project/lotus/api/apistruct"
 	"github.com/filecoin-project/lotus/node/repo"
 )
 
@@ -58,6 +52,8 @@ func flagForAPI(t repo.RepoType) string {
 		return "miner-api-url"
 	case repo.Worker:
 		return "worker-api-url"
+	case repo.RetrieveAPI:
+		return "retrieve-api-url"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
@@ -71,6 +67,8 @@ func flagForRepo(t repo.RepoType) string {
 		return "miner-repo"
 	case repo.Worker:
 		return "worker-repo"
+	case repo.RetrieveAPI:
+		return "retrieve-api-repo"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
@@ -84,12 +82,13 @@ func envForRepo(t repo.RepoType) string {
 		return "MINER_API_INFO"
 	case repo.Worker:
 		return "WORKER_API_INFO"
+	case repo.RetrieveAPI:
+		return "RETRIEVE_API_INFO"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
 }
 
-// TODO remove after deprecation period
 func envForRepoDeprecation(t repo.RepoType) string {
 	switch t {
 	case repo.FullNode:
@@ -98,11 +97,14 @@ func envForRepoDeprecation(t repo.RepoType) string {
 		return "STORAGE_API_INFO"
 	case repo.Worker:
 		return "WORKER_API_INFO"
+	case repo.RetrieveAPI:
+		return "RETRIEVE_API_INFO"
 	default:
 		panic(fmt.Sprintf("Unknown repo type: %v", t))
 	}
 }
 
+/*
 func GetAPIInfo(ctx *cli.Context, t repo.RepoType) (cliutil.APIInfo, error) {
 	// Check if there was a flag passed with the listen address of the API
 	// server (only used by the tests)
@@ -156,6 +158,7 @@ func GetAPIInfo(ctx *cli.Context, t repo.RepoType) (cliutil.APIInfo, error) {
 	}, nil
 }
 
+
 func GetRawAPI(ctx *cli.Context, t repo.RepoType) (string, http.Header, error) {
 	ainfo, err := GetAPIInfo(ctx, t)
 	if err != nil {
@@ -169,106 +172,68 @@ func GetRawAPI(ctx *cli.Context, t repo.RepoType) (string, http.Header, error) {
 
 	return addr, ainfo.AuthHeader(), nil
 }
+*/
 
 func GetAPI(ctx *cli.Context) (api.Common, jsonrpc.ClientCloser, error) {
-	ti, ok := ctx.App.Metadata["repoType"]
-	if !ok {
-		log.Errorf("unknown repo type, are you sure you want to use GetAPI?")
-		ti = repo.FullNode
-	}
-	t, ok := ti.(repo.RepoType)
-	if !ok {
-		log.Errorf("repoType type does not match the type of repo.RepoType")
-	}
+	/*
+		ti, ok := ctx.App.Metadata["repoType"]
+		if !ok {
+			log.Errorf("unknown repo type, are you sure you want to use GetAPI?")
+			ti = repo.FullNode
+		}
+		t, ok := ti.(repo.RepoType)
+		if !ok {
+			log.Errorf("repoType type does not match the type of repo.RepoType")
+		}
 
-	if tn, ok := ctx.App.Metadata["testnode-storage"]; ok {
-		return tn.(api.StorageMiner), func() {}, nil
-	}
-	if tn, ok := ctx.App.Metadata["testnode-full"]; ok {
-		return tn.(api.FullNode), func() {}, nil
-	}
+		if tn, ok := ctx.App.Metadata["testnode-full"]; ok {
+			return tn.(api.FullNode), func() {}, nil
+		}
 
-	addr, headers, err := GetRawAPI(ctx, t)
-	if err != nil {
-		return nil, nil, err
-	}
+		addr, headers, err := GetRawAPI(ctx, t)
+		if err != nil {
+			return nil, nil, err
+		}
 
-	return client.NewCommonRPC(ctx.Context, addr, headers)
+		return client.NewCommonRPC(ctx.Context, addr, headers)
+	*/
+	requestsForLotusHandler := js.Global().Get("requestsForLotusHandler")
+	var fullNodeApi apistruct.FullNodeStruct
+	closer, err := jsonrpc.NewJSMergeClient(context.Background(), requestsForLotusHandler, "Filecoin",
+		[]interface{}{
+			&fullNodeApi.CommonStruct.Internal,
+			&fullNodeApi.Internal,
+		})
+	return &fullNodeApi, closer, err
 }
 
 func GetFullNodeAPI(ctx *cli.Context) (api.FullNode, jsonrpc.ClientCloser, error) {
-	if tn, ok := ctx.App.Metadata["testnode-full"]; ok {
-		return tn.(api.FullNode), func() {}, nil
-	}
-
-	addr, headers, err := GetRawAPI(ctx, repo.FullNode)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return client.NewFullNodeRPC(ctx.Context, addr, headers)
-}
-
-type GetStorageMinerOptions struct {
-	PreferHttp bool
-}
-
-type GetStorageMinerOption func(*GetStorageMinerOptions)
-
-func StorageMinerUseHttp(opts *GetStorageMinerOptions) {
-	opts.PreferHttp = true
-}
-
-func GetStorageMinerAPI(ctx *cli.Context, opts ...GetStorageMinerOption) (api.StorageMiner, jsonrpc.ClientCloser, error) {
-	var options GetStorageMinerOptions
-	for _, opt := range opts {
-		opt(&options)
-	}
-
-	if tn, ok := ctx.App.Metadata["testnode-storage"]; ok {
-		return tn.(api.StorageMiner), func() {}, nil
-	}
-
-	addr, headers, err := GetRawAPI(ctx, repo.StorageMiner)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if options.PreferHttp {
-		u, err := url.Parse(addr)
+	requestsForLotusHandler := js.Global().Get("requestsForLotusHandler")
+	var fullNodeApi apistruct.FullNodeStruct
+	closer, err := jsonrpc.NewJSMergeClient(context.Background(), requestsForLotusHandler, "Filecoin",
+		[]interface{}{
+			&fullNodeApi.CommonStruct.Internal,
+			&fullNodeApi.Internal,
+		})
+	/*
 		if err != nil {
-			return nil, nil, xerrors.Errorf("parsing miner api URL: %w", err)
+			fmt.Printf("connecting with lotus failed: %s\n", err)
+			panic(err)
+		}
+	*/
+	/*
+		if tn, ok := ctx.App.Metadata["testnode-full"]; ok {
+			return tn.(api.FullNode), func() {}, nil
 		}
 
-		switch u.Scheme {
-		case "ws":
-			u.Scheme = "http"
-		case "wss":
-			u.Scheme = "https"
+		addr, headers, err := GetRawAPI(ctx, repo.FullNode)
+		if err != nil {
+			return nil, nil, err
 		}
 
-		addr = u.String()
-	}
-
-	return client.NewStorageMinerRPC(ctx.Context, addr, headers)
-}
-
-func GetWorkerAPI(ctx *cli.Context) (api.WorkerAPI, jsonrpc.ClientCloser, error) {
-	addr, headers, err := GetRawAPI(ctx, repo.Worker)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return client.NewWorkerRPC(ctx.Context, addr, headers)
-}
-
-func GetGatewayAPI(ctx *cli.Context) (api.GatewayAPI, jsonrpc.ClientCloser, error) {
-	addr, headers, err := GetRawAPI(ctx, repo.FullNode)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return client.NewGatewayRPC(ctx.Context, addr, headers)
+		return client.NewFullNodeRPC(ctx.Context, addr, headers)
+	*/
+	return &fullNodeApi, closer, err
 }
 
 func DaemonContext(cctx *cli.Context) context.Context {
@@ -291,29 +256,29 @@ func ReqContext(cctx *cli.Context) context.Context {
 		<-sigChan
 		done()
 	}()
-	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	// signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 
 	return ctx
 }
 
 var CommonCommands = []*cli.Command{
 	netCmd,
-	authCmd,
+	// authCmd,
 	logCmd,
 	waitApiCmd,
 	fetchParamCmd,
-	pprofCmd,
+	// pprofCmd,
 	VersionCmd,
 }
 
 var Commands = []*cli.Command{
 	WithCategory("basic", sendCmd),
 	WithCategory("basic", walletCmd),
-	WithCategory("basic", clientCmd),
+	// WithCategory("basic", clientCmd),
 	WithCategory("basic", multisigCmd),
 	WithCategory("basic", paychCmd),
-	WithCategory("developer", authCmd),
-	WithCategory("developer", mpoolCmd),
+	// WithCategory("developer", authCmd),
+	// WithCategory("developer", mpoolCmd),
 	WithCategory("developer", stateCmd),
 	WithCategory("developer", chainCmd),
 	WithCategory("developer", logCmd),
@@ -321,7 +286,7 @@ var Commands = []*cli.Command{
 	WithCategory("developer", fetchParamCmd),
 	WithCategory("network", netCmd),
 	WithCategory("network", syncCmd),
-	pprofCmd,
+	// pprofCmd,
 	VersionCmd,
 }
 

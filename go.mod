@@ -160,3 +160,5 @@ replace github.com/filecoin-project/filecoin-ffi => ./extern/filecoin-ffi
 replace github.com/filecoin-project/test-vectors => ./extern/test-vectors
 
 replace github.com/supranational/blst => ./extern/blst
+
+replace github.com/filecoin-project/go-jsonrpc => ../go-jsonrpc-wasm

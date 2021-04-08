@@ -1,4 +1,4 @@
-// +build !js
+// +build js
 
 package main
 
@@ -24,7 +24,6 @@ func main() {
 
 	local := []*cli.Command{
 		DaemonCmd,
-		backupCmd,
 	}
 	if AdvanceBlockCmd != nil {
 		local = append(local, AdvanceBlockCmd)

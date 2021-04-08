@@ -1,21 +1,13 @@
 package cli
 
 import (
-	"bytes"
-	"context"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"reflect"
 
 	"github.com/urfave/cli/v2"
-	cbg "github.com/whyrusleeping/cbor-gen"
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 
-	"github.com/filecoin-project/lotus/api"
-	"github.com/filecoin-project/lotus/chain/stmgr"
 	"github.com/filecoin-project/lotus/chain/types"
 )
 
@@ -114,6 +106,7 @@ var sendCmd = &cli.Command{
 		method := abi.MethodNum(cctx.Uint64("method"))
 
 		var params []byte
+		/* FIXME: !wasm
 		if cctx.IsSet("params-json") {
 			decparams, err := decodeTypedParams(ctx, api, toAddr, method, cctx.String("params-json"))
 			if err != nil {
@@ -131,6 +124,7 @@ var sendCmd = &cli.Command{
 			}
 			params = decparams
 		}
+		*/
 
 		msg := &types.Message{
 			From:       fromAddr,
@@ -167,6 +161,7 @@ var sendCmd = &cli.Command{
 	},
 }
 
+/* FIXME: !wasm
 func decodeTypedParams(ctx context.Context, fapi api.FullNode, to address.Address, method abi.MethodNum, paramstr string) ([]byte, error) {
 	act, err := fapi.StateGetActor(ctx, to, types.EmptyTSK)
 	if err != nil {
@@ -190,3 +185,4 @@ func decodeTypedParams(ctx context.Context, fapi api.FullNode, to address.Addres
 	}
 	return buf.Bytes(), nil
 }
+*/

@@ -1,26 +1,25 @@
+// +build !js
+
 package cli
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
-	tm "github.com/buger/goterm"
-	"github.com/chzyer/readline"
+	// tm "github.com/buger/goterm"
+	// "github.com/chzyer/readline"
 	"github.com/docker/go-units"
 	"github.com/fatih/color"
 	datatransfer "github.com/filecoin-project/go-data-transfer"
@@ -41,7 +40,6 @@ import (
 	"github.com/filecoin-project/lotus/api"
 	lapi "github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
-	"github.com/filecoin-project/lotus/chain/actors/builtin"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/market"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/lib/tablewriter"
@@ -337,9 +335,11 @@ var clientDealCmd = &cli.Command{
 		&CidBaseFlag,
 	},
 	Action: func(cctx *cli.Context) error {
-		if !cctx.Args().Present() {
-			return interactiveDeal(cctx)
-		}
+		/*
+			if !cctx.Args().Present() {
+				return interactiveDeal(cctx)
+			}
+		*/
 
 		api, closer, err := GetFullNodeAPI(cctx)
 		if err != nil {
@@ -473,6 +473,7 @@ var clientDealCmd = &cli.Command{
 	},
 }
 
+/*
 func interactiveDeal(cctx *cli.Context) error {
 	api, closer, err := GetFullNodeAPI(cctx)
 	if err != nil {
@@ -879,6 +880,7 @@ uiLoop:
 		}
 	}
 }
+*/
 
 var clientFindCmd = &cli.Command{
 	Name:      "find",
@@ -1481,7 +1483,7 @@ var clientListDeals = &cli.Command{
 
 		verbose := cctx.Bool("verbose")
 		color := cctx.Bool("color")
-		watch := cctx.Bool("watch")
+		// watch := cctx.Bool("watch")
 		showFailed := cctx.Bool("show-failed")
 
 		localDeals, err := api.ClientListDeals(ctx)
@@ -1489,41 +1491,43 @@ var clientListDeals = &cli.Command{
 			return err
 		}
 
-		if watch {
-			updates, err := api.ClientGetDealUpdates(ctx)
-			if err != nil {
-				return err
-			}
-
-			for {
-				tm.Clear()
-				tm.MoveCursor(1, 1)
-
-				err = outputStorageDeals(ctx, tm.Screen, api, localDeals, verbose, color, showFailed)
+		/*
+			if watch {
+				updates, err := api.ClientGetDealUpdates(ctx)
 				if err != nil {
 					return err
 				}
 
-				tm.Flush()
+				for {
+					tm.Clear()
+					tm.MoveCursor(1, 1)
 
-				select {
-				case <-ctx.Done():
-					return nil
-				case updated := <-updates:
-					var found bool
-					for i, existing := range localDeals {
-						if existing.ProposalCid.Equals(updated.ProposalCid) {
-							localDeals[i] = updated
-							found = true
-							break
-						}
+					err = outputStorageDeals(ctx, tm.Screen, api, localDeals, verbose, color, showFailed)
+					if err != nil {
+						return err
 					}
-					if !found {
-						localDeals = append(localDeals, updated)
+
+					tm.Flush()
+
+					select {
+					case <-ctx.Done():
+						return nil
+					case updated := <-updates:
+						var found bool
+						for i, existing := range localDeals {
+							if existing.ProposalCid.Equals(updated.ProposalCid) {
+								localDeals[i] = updated
+								found = true
+								break
+							}
+						}
+						if !found {
+							localDeals = append(localDeals, updated)
+						}
 					}
 				}
 			}
-		}
+		*/
 
 		return outputStorageDeals(ctx, cctx.App.Writer, api, localDeals, verbose, color, showFailed)
 	},
@@ -1976,44 +1980,46 @@ var clientListTransfers = &cli.Command{
 
 		completed := cctx.Bool("completed")
 		color := cctx.Bool("color")
-		watch := cctx.Bool("watch")
+		// watch := cctx.Bool("watch")
 		showFailed := cctx.Bool("show-failed")
-		if watch {
-			channelUpdates, err := api.ClientDataTransferUpdates(ctx)
-			if err != nil {
-				return err
-			}
+		/*
+			if watch {
+				channelUpdates, err := api.ClientDataTransferUpdates(ctx)
+				if err != nil {
+					return err
+				}
 
-			for {
-				tm.Clear() // Clear current screen
+				for {
+					tm.Clear() // Clear current screen
 
-				tm.MoveCursor(1, 1)
+					tm.MoveCursor(1, 1)
 
-				OutputDataTransferChannels(tm.Screen, channels, completed, color, showFailed)
+					OutputDataTransferChannels(tm.Screen, channels, completed, color, showFailed)
 
-				tm.Flush()
+					tm.Flush()
 
-				select {
-				case <-ctx.Done():
-					return nil
-				case channelUpdate := <-channelUpdates:
-					var found bool
-					for i, existing := range channels {
-						if existing.TransferID == channelUpdate.TransferID &&
-							existing.OtherPeer == channelUpdate.OtherPeer &&
-							existing.IsSender == channelUpdate.IsSender &&
-							existing.IsInitiator == channelUpdate.IsInitiator {
-							channels[i] = channelUpdate
-							found = true
-							break
+					select {
+					case <-ctx.Done():
+						return nil
+					case channelUpdate := <-channelUpdates:
+						var found bool
+						for i, existing := range channels {
+							if existing.TransferID == channelUpdate.TransferID &&
+								existing.OtherPeer == channelUpdate.OtherPeer &&
+								existing.IsSender == channelUpdate.IsSender &&
+								existing.IsInitiator == channelUpdate.IsInitiator {
+								channels[i] = channelUpdate
+								found = true
+								break
+							}
 						}
-					}
-					if !found {
-						channels = append(channels, channelUpdate)
+						if !found {
+							channels = append(channels, channelUpdate)
+						}
 					}
 				}
 			}
-		}
+		*/
 		OutputDataTransferChannels(os.Stdout, channels, completed, color, showFailed)
 		return nil
 	},
