@@ -87,6 +87,9 @@ interopnet: build-devnets
 wallabynet: GOFLAGS+=-tags=wallabynet
 wallabynet: build-devnets
 
+512m: GOFLAGS+=-tags=512m
+512m: build-devnets
+
 lotus: $(BUILD_DEPS)
 	rm -f lotus
 	$(GOCC) build $(GOFLAGS) -o lotus ./cmd/lotus
