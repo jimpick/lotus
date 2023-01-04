@@ -14,6 +14,7 @@ const (
 	BuildInteropnet   = 0x5
 	BuildButterflynet = 0x7
 	BuildWallabynet   = 0x8
+	Build512m         = 0x9
 )
 
 func BuildTypeString() string {
@@ -34,6 +35,8 @@ func BuildTypeString() string {
 		return "+butterflynet"
 	case BuildWallabynet:
 		return "+wallabynet"
+	case Build512m:
+		return "+512m"
 	default:
 		return "+huh?"
 	}
